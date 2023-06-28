@@ -1,6 +1,7 @@
 {
+  "manifest_version": 3,
   "name": "Places",
-  "version": "0.3.3",
+  "version": "0.3.5",
   "description": "Get address info from Google Places API",
   "permissions": ["storage", "tabs"],
   "host_permissions": ["https://*/prophet21/*", "https://*/Prophet21/*"],
@@ -10,14 +11,13 @@
   "content_scripts": [
     {
       "matches": ["https://*/prophet21/*", "https://*/Prophet21/*"],
-      "js": ["contentScript.js"],
+      "js": ["content.js"],
       "run_at": "document_end"
     }
   ],
-
   "web_accessible_resources": [
     {
-      "resources": ["inject-script.js", "inputScript.js"],
+      "resources": ["loadMap.js", "w_order_entry_sheet.js", "w_ship_to_sheet.js", "w_customer_maint_sheet.js"],
       "matches": ["https://*/*"]
     }
   ],
@@ -29,9 +29,7 @@
     },
     "default_title": "Places"
   },
-
   "content_security_policy": {
     "extension_pages": "default-src 'self'"
-  },
-  "manifest_version": 3
+  }
 }

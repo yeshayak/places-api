@@ -1,9 +1,7 @@
 function handleUpdated(tabId, changeInfo, tabInfo) {
-  if (tabInfo.url.includes('/window/w_order_entry_sheet') || tabInfo.url.includes('/window/w_ship_to_sheet')) {
+  if (tabInfo.url.includes('/window/w_order_entry_sheet') || tabInfo.url.includes('/window/w_ship_to_sheet') || tabInfo.url.includes('/window/w_customer_maint_sheet')) {
     chrome.tabs.sendMessage(tabId, { changeInfo: changeInfo })
-    // chrome.tabs.executeScript({
-    //   file: 'inputScript.js',
-    // })
+
     console.log('Updated tab: ' + tabId)
     console.log('Changed attributes: ')
     console.log(changeInfo)

@@ -40,6 +40,7 @@ if (typeof tabListHeader === 'undefined') {
     //Loop through all the components and update the field that contains that name
     console.log(place)
     for (component in place) {
+      console.log(component, document.querySelector(`[id*=shipto]`).querySelector(`[id$=${component}]`).id)
       let id = document.querySelector(`[id*=shipto]`).querySelector(`[id$=${component}]`).id
       let fieldName = id.split('.')[1]
       window.angular

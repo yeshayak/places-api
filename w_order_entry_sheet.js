@@ -39,8 +39,8 @@ if (typeof tabListHeader === 'undefined') {
 
     //Loop through all the components and update the field that contains that name
     for (component in place) {
-      console.log(component, document.querySelector(`[id*=shipto]`).querySelector(`[id$=${component}]`).id)
-      let id = document.querySelector(`[id*=shipto]`).querySelector(`[id$=${component}]`).id
+      console.log(component, document.querySelector(`[id=shipto]`).querySelector(`[id$=${component}]`).id)
+      let id = document.querySelector(`[id=shipto]`).querySelector(`[id$=${component}]`).id
       let fieldName = id.split('.')[1]
       console.log(id, fieldName)
       window.angular
@@ -60,13 +60,60 @@ if (typeof tabListHeader === 'undefined') {
     }
   }
 
+  let lookupAddress = async () => {}
+
+  let paymentLink = async () => {
+    if (tabListHeader.querySelector('li.active>a').innerHTML === 'Remittances') {
+      console.log('initialize paymentLink')
+      let recalculateTotals = document.querySelector(`[id='remittotals.recalculate_t'`)
+      let orderRecord = window.angular.element(document.querySelector(`[id='order.order_no'`)).scope().record
+      let paymentRecord = window.angular.element(document.querySelector(`[id='remittotals.cf_balance'`)).scope().record
+      let contactRecord = window.angular.element(document.querySelector(`[id='tp_contacts.contact_id'`)).scope()?.record
+      let customerRecord = window.angular.element(document.querySelector(`[id='tp_customer.email_address'`)).scope()?.record
+      let linkTextArea = document.querySelector(`[id='remittotals.cf_usersd22bd'`)
+      let sendTextButton = document.querySelector(`[id='remittotals.cb_usersd23fc'`)
+      let sendEmailButton = document.querySelector(`[id='remittotals.cb_usersd66af'`)
+      let balance = paymentRecord?.cf_balance.toFixed(2)
+
+      let companyString
+      if (orderRecord.company_id == 'WHB') {
+        companyString = 'wavehomeandbath'
+      } else if (orderRecord.company_id == 'GPS') {
+        companyString = 'gatorplumbingsupply'
+      }
+      linkTextArea.classList.remove('ng-hide')
+      // sendTextButton.classList.remove('ng-hide')
+      sendEmailButton.classList.remove('ng-hide')
+      linkTextArea.value = `https://secure.cardknox.com/${companyString}?xAmount=${balance}&xInvoice=${orderRecord.order_no}&xCustom01=${orderRecord.customer_id}`
+
+      console.log(`Balance: ${balance}, Order: ${orderRecord.order_no}, Customer: ${orderRecord.customer_id}, Company: ${orderRecord.company_id}`)
+      console.log(`https://secure.cardknox.com/${companyString}?xAmount=${balance}&xInvoice=${orderRecord.order_no}&xCustom01=${orderRecord.customer_id}`)
+      let sendEmail = (linkTextArea) => {
+        console.log('email clicked')
+        let link = encodeURIComponent(linkTextArea.value)
+        window.location = `mailto:${contactRecord?.email_address}?subject=Payment%20Link&body=See%20below%20link%20to%20pay%20for%20your%20order%3A%0A%0A${link}`
+      }
+
+      sendEmailButton.addEventListener('click', () => {
+        sendEmail(linkTextArea)
+      })
+      recalculateTotals?.addEventListener('click', () => {
+        paymentLink()
+      })
+    }
+  }
+
   var tabListHeader = document.querySelector('.tab-list-header-container>ul')
 
   initializeAutocomplete()
+  paymentLink()
 
   tabListHeader?.addEventListener('click', () => {
     setTimeout(() => {
       initializeAutocomplete()
     }, 250)
+    setTimeout(() => {
+      paymentLink()
+    }, 2000)
   })
 }

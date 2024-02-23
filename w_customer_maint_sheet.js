@@ -23,7 +23,7 @@ if (typeof tabListHeader === 'undefined') {
     console.log(autocomplete.getPlace())
     const addressObject = autocomplete.getPlace()
     const place = {
-      address_name: addressObject.name,
+      name: addressObject.name,
       address1: '',
       address2: '',
     }
@@ -40,8 +40,8 @@ if (typeof tabListHeader === 'undefined') {
     //Loop through all the components and update the field that contains that name
     console.log(place)
     for (component in place) {
-      console.log(component, document.querySelector(`[id*=shipto]`).querySelector(`[id$=${component}]`).id)
-      let id = document.querySelector(`[id*=shipto]`).querySelector(`[id$=${component}]`).id
+      console.log(component, document.querySelector(`[id*=tp_1_dw_1]`).querySelector(`[id$=${component}]`).id)
+      let id = document.querySelector(`[id*=tp_1_dw_1]`).querySelector(`[id$=${component}]`).id
       let fieldName = id.split('.')[1]
       window.angular
         .element(document.getElementById(id))

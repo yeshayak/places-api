@@ -1,5 +1,7 @@
 if (typeof tabListHeader === 'undefined') {
+  var tabListHeader = document.querySelector('.tab-list-header-container>ul')
   var autocomplete
+
   let initializeAutocomplete = () => {
     if (
       tabListHeader.querySelector('li.active>a').innerHTML === 'Ship To'
@@ -60,8 +62,6 @@ if (typeof tabListHeader === 'undefined') {
     }
   }
 
-  let lookupAddress = async () => {}
-
   let paymentLink = async () => {
     if (tabListHeader.querySelector('li.active>a').innerHTML === 'Remittances') {
       console.log('initialize paymentLink')
@@ -71,7 +71,7 @@ if (typeof tabListHeader === 'undefined') {
       let contactRecord = window.angular.element(document.querySelector(`[id='tp_contacts.contact_id'`)).scope()?.record
       let customerRecord = window.angular.element(document.querySelector(`[id='tp_customer.email_address'`)).scope()?.record
       let linkTextArea = document.querySelector(`[id='remittotals.cf_usersd22bd'`)
-      let sendTextButton = document.querySelector(`[id='remittotals.cb_usersd23fc'`)
+      let copyTextButton = document.querySelector(`[id='remittotals.cb_usersd23fc'`)
       let sendEmailButton = document.querySelector(`[id='remittotals.cb_usersd66af'`)
       let balance = paymentRecord?.cf_balance.toFixed(2)
 
@@ -82,28 +82,35 @@ if (typeof tabListHeader === 'undefined') {
         companyString = 'gatorplumbingsupply'
       }
       linkTextArea.classList.remove('ng-hide')
-      // sendTextButton.classList.remove('ng-hide')
+      copyTextButton.classList.remove('ng-hide')
       sendEmailButton.classList.remove('ng-hide')
       linkTextArea.value = `https://secure.cardknox.com/${companyString}?xAmount=${balance}&xInvoice=${orderRecord.order_no}&xCustom01=${orderRecord.customer_id}`
 
       console.log(`Balance: ${balance}, Order: ${orderRecord.order_no}, Customer: ${orderRecord.customer_id}, Company: ${orderRecord.company_id}`)
       console.log(`https://secure.cardknox.com/${companyString}?xAmount=${balance}&xInvoice=${orderRecord.order_no}&xCustom01=${orderRecord.customer_id}`)
+
       let sendEmail = (linkTextArea) => {
         console.log('email clicked')
         let link = encodeURIComponent(linkTextArea.value)
         window.location = `mailto:${contactRecord?.email_address}?subject=Payment%20Link&body=See%20below%20link%20to%20pay%20for%20your%20order%3A%0A%0A${link}`
       }
 
+      let copyToClipboard = (linkTextArea) => {
+        // Copy the text inside the text field
+        navigator.clipboard.writeText(linkTextArea.value)
+      }
+
       sendEmailButton.addEventListener('click', () => {
         sendEmail(linkTextArea)
+      })
+      copyTextButton.addEventListener('click', () => {
+        copyToClipboard(linkTextArea)
       })
       recalculateTotals?.addEventListener('click', () => {
         paymentLink()
       })
     }
   }
-
-  var tabListHeader = document.querySelector('.tab-list-header-container>ul')
 
   initializeAutocomplete()
   paymentLink()

@@ -15,5 +15,7 @@ chrome.runtime.onMessage.addListener((request) => {
     injectScript(chrome.runtime.getURL('w_ship_to_sheet.js'), 'body')
   } else if (request.changeInfo.title?.includes('Customer Maintenance:')) {
     injectScript(chrome.runtime.getURL('w_customer_maint_sheet.js'), 'body')
+  } else if (request.changeInfo.title?.includes('Customer Master Inquiry:')) {
+    injectScript(chrome.runtime.getURL('w_customer_master_inquiry.js'), 'body')
   }
 })

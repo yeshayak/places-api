@@ -1,8 +1,9 @@
 if (typeof tabListHeader === 'undefined') {
+  let root = angular.element('#contextWindow').scope()
   var autocomplete
   let initializeAutocomplete = () => {
     if (
-      tabListHeader.querySelector('li.active>a').innerHTML === 'Customer Information'
+      root.windowMetadata.Sections.top.ActivePage === 'TABPAGE_1'
       // &&
       // !document.getElementById('shipto.ship_to_id').value
     ) {

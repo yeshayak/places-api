@@ -1,10 +1,11 @@
 if (typeof tabListHeader === 'undefined') {
-  var tabListHeader = document.querySelector('.tab-list-header-container>ul')
+  var tabListHeader = document.querySelector('#p21TabsetDir ul')
+  let root = angular.element('#contextWindow').scope()
   var autocomplete
 
   let initializeAutocomplete = () => {
     if (
-      tabListHeader.querySelector('li.active>a').innerHTML === 'Ship To'
+      root.windowMetadata.Sections.top.ActivePage === 'TP_SHIPTO'
       // &&
       // !document.getElementById('shipto.ship_to_id').value
     ) {
@@ -24,6 +25,9 @@ if (typeof tabListHeader === 'undefined') {
   let handlePlaceSelect = async () => {
     console.log(autocomplete.getPlace())
     const addressObject = autocomplete.getPlace()
+    if (!addressObject) {
+      throw new Error('No place selected')
+    }
     const place = {
       name: addressObject.name,
       address1: '',
@@ -41,11 +45,9 @@ if (typeof tabListHeader === 'undefined') {
 
     //Loop through all the components and update the field that contains that name
     for (component in place) {
-      console.log(component, document.querySelector(`[id=shipto]`).querySelector(`[id$=${component}]`).id)
       let id = document.querySelector(`[id=shipto]`).querySelector(`[id$=${component}]`).id
       let fieldName = id.split('.')[1]
-      console.log(id, fieldName)
-      window.angular
+      await window.angular
         .element(document.getElementById(id))
         .scope()
         .$apply(({ record }) => {
@@ -60,10 +62,11 @@ if (typeof tabListHeader === 'undefined') {
           console.log(error)
         })
     }
+    checkDuplicates()
   }
 
   let paymentLink = async () => {
-    if (tabListHeader.querySelector('li.active>a').innerHTML === 'Remittances') {
+    if (root.windowMetadata.Sections.top.ActivePage === 'TP_REMITTANCES') {
       console.log('initialize paymentLink')
       let recalculateTotals = document.querySelector(`[id='remittotals.recalculate_t'`)
       let orderRecord = window.angular.element(document.querySelector(`[id='order.order_no'`)).scope().record
@@ -109,6 +112,32 @@ if (typeof tabListHeader === 'undefined') {
       recalculateTotals?.addEventListener('click', () => {
         paymentLink()
       })
+    }
+  }
+
+  let checkDuplicates = async () => {
+    if (root.windowMetadata.Sections.top.ActivePage === 'TP_SHIPTO') {
+      let customer_id = root.windowData['TABPAGE_1.order'][0].customer_id
+      let token = root.userSession.token
+      let lookup_name = root.windowData['TP_SHIPTO.shipto'][0].phys_address1
+      const myHeaders = new Headers()
+      myHeaders.append('Content-Type', 'application/json')
+      myHeaders.append('Authorization', `Bearer ${token}`)
+      const requestOptions = {
+        method: 'get',
+        headers: myHeaders,
+        redirect: 'follow',
+      }
+
+      await fetch(`https://p21live.gatorps.com/odataservice/odata/view/p21_view_address?$filter= delete_flag eq 'N' and corp_address_id eq ${customer_id} and shipping_address eq 'Y' and contains(name, '${lookup_name}')`, requestOptions)
+        .then((response) => response.json())
+        .then((result) => {
+          if (result.value.length > 0) {
+            console.log(result.value)
+            alert('Duplicate Ship To')
+          }
+        })
+        .catch((error) => console.error(error))
     }
   }
 

@@ -62,7 +62,7 @@ if (typeof tabListHeader === 'undefined') {
           console.log(error)
         })
     }
-    checkDuplicates()
+    checkDuplicates(place.address1)
   }
 
   let paymentLink = async () => {
@@ -115,30 +115,27 @@ if (typeof tabListHeader === 'undefined') {
     }
   }
 
-  let checkDuplicates = async () => {
-    if (root.windowMetadata.Sections.top.ActivePage === 'TP_SHIPTO') {
-      let customer_id = root.windowData['TABPAGE_1.order'][0].customer_id
-      let token = root.userSession.token
-      let lookup_name = root.windowData['TP_SHIPTO.shipto'][0].phys_address1
-      const myHeaders = new Headers()
-      myHeaders.append('Content-Type', 'application/json')
-      myHeaders.append('Authorization', `Bearer ${token}`)
-      const requestOptions = {
-        method: 'get',
-        headers: myHeaders,
-        redirect: 'follow',
-      }
-
-      await fetch(`https://p21live.gatorps.com/odataservice/odata/view/p21_view_address?$filter= delete_flag eq 'N' and corp_address_id eq ${customer_id} and shipping_address eq 'Y' and contains(name, '${lookup_name}')`, requestOptions)
-        .then((response) => response.json())
-        .then((result) => {
-          if (result.value.length > 0) {
-            console.log(result.value)
-            alert('Duplicate Ship To')
-          }
-        })
-        .catch((error) => console.error(error))
+  let checkDuplicates = async (lookup_name) => {
+    let customer_id = root.windowData['TABPAGE_1.order'][0].customer_id
+    let token = root.userSession.token
+    const myHeaders = new Headers()
+    myHeaders.append('Content-Type', 'application/json')
+    myHeaders.append('Authorization', `Bearer ${token}`)
+    const requestOptions = {
+      method: 'get',
+      headers: myHeaders,
+      redirect: 'follow',
     }
+
+    await fetch(`https://p21live.gatorps.com/odataservice/odata/view/ice_ship_to_address?$filter= delete_flag eq 'N' and customer_id eq ${customer_id} and contains(phys_address1, '${lookup_name}')&$count=true`, requestOptions)
+      .then((response) => response.json())
+      .then((result) => {
+        if (result.value.length > 0) {
+          console.log(result.value)
+          alert('Duplicate Ship To')
+        }
+      })
+      .catch((error) => console.error(error))
   }
 
   initializeAutocomplete()

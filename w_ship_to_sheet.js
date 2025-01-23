@@ -1,14 +1,12 @@
 if (typeof tabListHeader === 'undefined') {
+  var tabListHeader = document.querySelector('#p21TabsetDir ul')
   var autocomplete
+  var autocomplete2
   let initializeAutocomplete = () => {
-    if (
-      tabListHeader.querySelector('li.active>a').innerHTML === 'Ship To'
-      // &&
-      // !document.getElementById('shipto.ship_to_id').value
-    ) {
+    if (tabListHeader.querySelector('li.active>a').innerHTML === 'Ship To') {
       console.log('initializeAutoComplete')
       //Search on address_name field
-      let autocompleteInput = document.querySelectorAll(`div.tab-pane.ng-scope.active`)[1].querySelector(`[id*='address_name']`)
+      let autocompleteInput = document.querySelector('#shiptomain').querySelector(`[id*='address_name']`)
       autocomplete = new window.google.maps.places.Autocomplete(autocompleteInput, {
         componentRestrictions: { country: 'us' },
         fields: ['address_components', 'name'],
@@ -18,7 +16,7 @@ if (typeof tabListHeader === 'undefined') {
       }
       google.maps.event.addListener(autocomplete, 'place_changed', handlePlaceSelect)
       //Search on address1 field
-      let autocompleteInput2 = document.querySelectorAll(`div.tab-pane.ng-scope.active`)[1].querySelector(`[id*='address1']`)
+      let autocompleteInput2 = document.querySelector('#shiptomain').querySelector(`[id*='address1']`)
       autocomplete2 = new window.google.maps.places.Autocomplete(autocompleteInput2, {
         componentRestrictions: { country: 'us' },
         fields: ['address_components', 'name'],
@@ -51,7 +49,7 @@ if (typeof tabListHeader === 'undefined') {
 
     //Loop through all the components and update the field that contains that name
     console.log(place)
-    for (component in place) {
+    for (let component in place) {
       console.log(component, document.querySelector(`[id*=shipto]`).querySelector(`[id$=${component}]`).id)
       let id = document.querySelector(`[id*=shipto]`).querySelector(`[id$=${component}]`).id
       let fieldName = id.split('.')[1]
@@ -92,7 +90,7 @@ if (typeof tabListHeader === 'undefined') {
 
     //Loop through all the components and update the field that contains that name
     console.log(place)
-    for (component in place) {
+    for (let component in place) {
       console.log(component, document.querySelector(`[id*=shipto]`).querySelector(`[id$=${component}]`).id)
       let id = document.querySelector(`[id*=shipto]`).querySelector(`[id$=${component}]`).id
       let fieldName = id.split('.')[1]
@@ -112,8 +110,6 @@ if (typeof tabListHeader === 'undefined') {
         })
     }
   }
-
-  var tabListHeader = document.querySelector('.tab-list-header-container>ul')
 
   initializeAutocomplete()
 

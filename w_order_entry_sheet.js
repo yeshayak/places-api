@@ -4,11 +4,7 @@ if (typeof tabListHeader === 'undefined') {
   var autocomplete
 
   let initializeAutocomplete = () => {
-    if (
-      root.windowMetadata.Sections.top.ActivePage === 'TP_SHIPTO'
-      // &&
-      // !document.getElementById('shipto.ship_to_id').value
-    ) {
+    if (root.windowMetadata.Sections.top.ActivePage === 'TP_SHIPTO') {
       console.log('initializeAutoComplete')
       let autocompleteInput = document.querySelectorAll(`div.tab-pane.ng-scope.active`)[1].querySelector(`[id*='name']`)
       autocomplete = new window.google.maps.places.Autocomplete(autocompleteInput, {
@@ -44,7 +40,7 @@ if (typeof tabListHeader === 'undefined') {
     })
 
     //Loop through all the components and update the field that contains that name
-    for (component in place) {
+    for (let component in place) {
       let id = document.querySelector(`[id=shipto]`).querySelector(`[id$=${component}]`).id
       let fieldName = id.split('.')[1]
       await window.angular

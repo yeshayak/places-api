@@ -21,8 +21,10 @@ if (typeof tabListHeader === 'undefined') {
   let handlePlaceSelect = async () => {
     console.log(autocomplete.getPlace())
     const addressObject = autocomplete.getPlace()
+    if (!addressObject) {
+      throw new Error('No place selected')
+    }
     const place = {
-      name: addressObject.name,
       address1: '',
       address2: '',
     }
@@ -38,9 +40,8 @@ if (typeof tabListHeader === 'undefined') {
 
     //Loop through all the components and update the field that contains that name
     console.log(place)
-    for (component in place) {
-      console.log(component, document.querySelector(`[id*=physical_address]`).querySelector(`[id$=${component}]`).id)
-      let id = document.querySelector(`[id*=physical_address]`).querySelector(`[id$=${component}]`).id
+    for (let component in place) {
+      let id = document.querySelector(`[id=physical_address]`).querySelector(`[id$=${component}]`).id
       let fieldName = id.split('.')[1]
       window.angular
         .element(document.getElementById(id))

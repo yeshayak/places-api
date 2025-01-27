@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Places",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "description": "Get address info from Google Places API",
-  "permissions": ["storage", "tabs"],
+  "permissions": ["storage", "tabs", "activeTab"],
   "host_permissions": ["https://*/prophet21/*", "https://*/Prophet21/*"],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "content_scripts": [
     {
@@ -17,7 +18,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["loadMap.js", "w_order_entry_sheet.js", "w_ship_to_sheet.js", "w_customer_maint_sheet.js", "w_customer_master_inquiry.js"],
+      "resources": ["loadMap.js", "w_order_entry_sheet.js", "w_ship_to_sheet.js", "w_customer_maint_sheet.js", "w_customer_master_inquiry.js", "w_ship_sheet.js"],
       "matches": ["https://*/*"]
     }
   ],
@@ -30,6 +31,6 @@
     "default_title": "Places"
   },
   "content_security_policy": {
-    "extension_pages": "default-src 'self'"
+    "extension_pages": "default-src 'self'; connect-src 'self' https://gatorps.prokeep.com"
   }
 }

@@ -4,28 +4,32 @@ let root = angular.element('#contextWindow').scope()
 let pickupMessage = async () => {
   if (root.windowMetadata.Sections.top.ActivePage === 'TABPAGE_1') {
     console.log('initialize pickupMessage')
-    let pickupButton = document.querySelector(`[id='tp_1_dw_1.cb_usersda77a'`)
-    pickupButton.classList.remove('ng-hide')
+    // const myHeaders = new Headers()
+    // myHeaders.append('Content-Type', 'application/json')
+    // myHeaders.append('Authorization', 'Basic WjRPQkpMSDRFVkNWMldJV0lOR0g2UVY1NzRXVTVUVE06WXVGOGJFbTFUYVpiSkM1YmRyOXpjcVFhWUltSVVDR3h2aGJBSTdoRWxUQQ==')
 
-    let postMessage = () => {
-      console.log('pickup button clicked')
+    // const raw = JSON.stringify({
+    //   text: 'Your package is ready for pickup!',
+    //   from: '+17326554339',
+    //   to: '+18483738096',
+    //   status_callback: 'https://www.toptal.com/developers/postbin/abc-123',
+    //   tags: ['order_pickup'],
+    // })
 
-      chrome.runtime.sendMessage(
-        {
-          action: 'postMessage',
-        },
-        (response) => {
-          if (response.error) {
-            console.error('Error:', response.error)
-          } else {
-            console.log('Message sent:', response.result)
-          }
-        }
-      )
-    }
+    // const requestOptions = {
+    //   method: 'POST',
+    //   headers: myHeaders,
+    //   body: raw,
+    //   redirect: 'follow',
+    // }
 
-    pickupButton.addEventListener('click', postMessage)
+    // fetch('https://gatorps.prokeep.com/rest/v1/messages', requestOptions)
+    //   .then((response) => response.text())
+    //   .then((result) => console.log(result))
+    //   .catch((error) => console.error(error))
   }
 }
 
-pickupMessage()
+tabListHeader?.addEventListener('click', () => {
+  setTimeout(() => {}, 250)
+})

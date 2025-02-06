@@ -40,6 +40,8 @@ let handlePlaceSelect = async () => {
 
   //Loop through all the components and update the field that contains that name
   for (let component in place) {
+    console.log(component)
+
     let id = document.querySelector(`[id=shipto]`).querySelector(`[id$=${component}]`).id
     let fieldName = id.split('.')[1]
     await window.angular
@@ -52,7 +54,9 @@ let handlePlaceSelect = async () => {
       .element(document.getElementById(id))
       .scope()
       .onChange()
-      .then(() => {})
+      .then((e) => {
+        console.log(e)
+      })
       .catch((error) => {
         console.log(error)
       })

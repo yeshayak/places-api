@@ -1,64 +1,22 @@
-var tabListHeader = document.querySelector('#bottomSectionDiv ul')
-var autocomplete
-let initializeAutocomplete = () => {
-  if (
-    tabListHeader.querySelector('li.active a').innerHTML === 'Physical Address'
-    // &&
-    // !document.getElementById('shipto.ship_to_id').value
-  ) {
-    console.log('initializeAutoComplete')
-    let autocompleteInput = document.querySelector(`[id*='physical_address.phys_address1']`)
-    autocomplete = new window.google.maps.places.Autocomplete(autocompleteInput, {
-      componentRestrictions: { country: 'us' },
-      fields: ['address_components', 'name'],
-    })
-    autocompleteInput.onfocus = () => {
-      autocompleteInput.autocomplete = 'new-password'
-    }
-    google.maps.event.addListener(autocomplete, 'place_changed', handlePlaceSelect)
-  }
-}
-let handlePlaceSelect = async () => {
-  console.log(autocomplete.getPlace())
-  const addressObject = autocomplete.getPlace()
-  if (!addressObject) {
-    throw new Error('No place selected')
-  }
-  const place = {
-    address1: '',
-    address2: '',
-  }
-  addressObject.address_components.forEach((component) => {
-    component.types.includes('street_number') ? (place.address1 = `${component.short_name} `) : ''
-    component.types.includes('route') ? (place.address1 += `${component.short_name}`) : ''
-    component.types.includes('subpremise') ? (place.address2 = component.short_name) : ''
-    component.types.includes('locality') ? (place.city = component.short_name) : ''
-    component.types.includes('sublocality_level_1') ? (place.city = component.short_name) : ''
-    component.types.includes('administrative_area_level_1') ? (place.state = component.short_name) : ''
-    component.types.includes('postal_code') ? (place.postal_code = component.short_name) : ''
-  })
+import { initializeAutocomplete, handlePlaceSelect } from './autocomplete.js'
 
-  //Loop through all the components and update the field that contains that name
-  console.log(place)
-  for (let component in place) {
-    let id = document.querySelector(`[id=physical_address]`).querySelector(`[id$=${component}]`).id
-    let fieldName = id.split('.')[1]
-    window.angular
-      .element(document.getElementById(id))
-      .scope()
-      .$apply(({ record }) => {
-        record[fieldName] = place[component]
+var tabListHeader = document.querySelector('#bottomSectionDiv ul')
+let root = angular.element('#contextWindow').scope()
+var autocomplete
+
+let initAutocomplete = async () => {
+  if (root.windowMetadata.Sections.bottom.ActivePage === 'PHYSICAL_ADDRESS') {
+    // console.log('initializeAutoComplete')
+    autocomplete = await initializeAutocomplete(`[id*='physical_address.phys_address1']`)
+    if (autocomplete) {
+      google.maps.event.addListener(autocomplete, 'place_changed', () => {
+        // console.log('place_changed')
+        handlePlaceSelect(autocomplete, '[id=physical_address]', false)
       })
-    await window.angular
-      .element(document.getElementById(id))
-      .scope()
-      .onChange()
-      .then(() => {})
-      .catch((error) => {
-        console.log(error)
-      })
+    }
   }
 }
+
 let paymentLink = async () => {
   if (tabListHeader.querySelector('li.active>a').innerHTML === 'Payment Account') {
     console.log('initialize paymentLink')
@@ -101,12 +59,12 @@ let paymentLink = async () => {
   }
 }
 
-initializeAutocomplete()
+initAutocomplete()
 paymentLink()
 
 tabListHeader?.addEventListener('click', () => {
   setTimeout(() => {
-    initializeAutocomplete()
+    initAutocomplete()
   }, 250)
   setTimeout(() => {
     paymentLink()

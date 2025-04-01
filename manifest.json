@@ -23,9 +23,9 @@
   ],
   "action": {
     "default_icon": {
-      "16": "gator128.png",
-      "24": "gator128.png",
-      "32": "gator128.png"
+      "16": "gator16.png",
+      "24": "gator24.png",
+      "32": "gator32.png"
     },
     "default_title": "Places"
   },

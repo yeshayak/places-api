@@ -1,36 +1,38 @@
-import { initializeAutocomplete, handlePlaceSelect } from './autocomplete.js'
+import { initializeAutocomplete, handlePlaceSelect } from './autocomplete.js';
 
-var tabListHeader = document.querySelector('#p21TabsetDir ul')
-let root = angular.element('#contextWindow').scope()
-var autocomplete
-var autocomplete2
+// Selectors and Global Variables
+const tabListHeader = document.querySelector('#p21TabsetDir ul');
+const root = angular.element('#contextWindow').scope();
+let autocomplete;
+let autocomplete2;
 
-let initAutocomplete = async () => {
+// Initialize Google Places Autocomplete
+const initializeAutocomplete = async () => {
   if (root.windowMetadata.Sections.top.ActivePage === 'TABPAGE_1') {
-    // console.log('initializeAutoComplete')
-    // Search on address_name field
-    autocomplete = await initializeAutocomplete('[id*="address_name"]')
+    console.log('Initializing Autocomplete');
+
+    // Autocomplete for Address Name
+    autocomplete = await initializeAutocomplete('[id*="address_name"]');
     if (autocomplete) {
       google.maps.event.addListener(autocomplete, 'place_changed', () => {
-        // console.log('place_changed')
-        handlePlaceSelect(autocomplete, '[id*=shipto]', true)
-      })
+        handlePlaceSelect(autocomplete, '[id*=shipto]', true);
+      });
     }
-    // Search on address1 field
-    autocomplete2 = await initializeAutocomplete('[id*="address1"]')
+
+    // Autocomplete for Address1
+    autocomplete2 = await initializeAutocomplete('[id*="address1"]');
     if (autocomplete2) {
       google.maps.event.addListener(autocomplete2, 'place_changed', () => {
-        // console.log('place_changed')
-        handlePlaceSelect(autocomplete2, '[id*=shipto]', false)
-      })
+        handlePlaceSelect(autocomplete2, '[id*=shipto]', false);
+      });
     }
   }
-}
+};
 
-initAutocomplete()
+// Initialize Functions
+initializeAutocomplete();
 
+// Add Event Listeners
 tabListHeader?.addEventListener('click', () => {
-  setTimeout(() => {
-    initAutocomplete()
-  }, 250)
-})
+  setTimeout(() => initializeAutocomplete(), 250);
+});

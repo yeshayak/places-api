@@ -7,12 +7,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tabInfo) => {
       tabInfo.url.includes('/window/w_ship_sheet')) &&
     changeInfo.title
   ) {
-    chrome.tabs.sendMessage(tabId, { changeInfo: changeInfo })
+    chrome.tabs.sendMessage(tabId, { changeInfo: changeInfo });
 
-    console.log('Updated tab: ' + tabId)
-    console.log('Changed attributes: ')
-    console.log(changeInfo)
-    console.log('New tab Info: ')
-    console.log(tabInfo)
+    console.log('Updated tab: ' + tabId);
+    console.log('Changed attributes: ');
+    console.log(changeInfo);
+    console.log('New tab Info: ');
+    console.log(tabInfo);
   }
-})
+});

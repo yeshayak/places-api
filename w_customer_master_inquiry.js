@@ -1,72 +1,88 @@
-import { initializeAutocomplete, handlePlaceSelect } from './autocomplete.js'
+import { initializeAutocomplete, handlePlaceSelect } from './autocomplete.js';
 
-var tabListHeader = document.querySelector('#bottomSectionDiv ul')
-let root = angular.element('#contextWindow').scope()
-var autocomplete
+// Selectors and Global Variables
+const tabListHeader = document.querySelector('#bottomSectionDiv ul');
+const root = angular.element('#contextWindow').scope();
+let autocomplete;
 
-let initAutocomplete = async () => {
+// Initialize Google Places Autocomplete
+const initializeAutoComplete = async () => {
   if (root.windowMetadata.Sections.bottom.ActivePage === 'PHYSICAL_ADDRESS') {
-    // console.log('initializeAutoComplete')
-    autocomplete = await initializeAutocomplete(`[id*='physical_address.phys_address1']`)
+    console.log('initializeAutoComplete');
+
+    const autocompleteInputSelector = `[id*='physical_address.phys_address1']`;
+    autocomplete = await initializeAutocomplete(autocompleteInputSelector);
+
     if (autocomplete) {
       google.maps.event.addListener(autocomplete, 'place_changed', () => {
-        // console.log('place_changed')
-        handlePlaceSelect(autocomplete, '[id=physical_address]', false)
-      })
+        handlePlaceSelect(autocomplete, '[id=physical_address]', false);
+      });
     }
   }
-}
+};
 
-let paymentLink = async () => {
-  if (tabListHeader.querySelector('li.active>a').innerHTML === 'Payment Account') {
-    console.log('initialize paymentLink')
-    let customerRecord = window.angular.element(document.querySelector(`[id='customer.customer_id'`)).scope()?.record
-    let linkTextArea = document.querySelector(`[id='tp_paymentaccount.cf_usersd8fc2'`)
-    let copyTextButton = document.querySelector(`[id='tp_paymentaccount.cb_usersd4e72'`)
-    let sendEmailButton = document.querySelector(`[id='tp_paymentaccount.cb_usersd7da8'`)
+// Generate Payment Link
+const paymentLink = async () => {
+  const activeTab = tabListHeader?.querySelector('li.active > a')?.innerHTML;
+  if (activeTab === 'Payment Account') {
+    console.log('Initializing Payment Link');
 
-    let companyString
-    if (customerRecord.company_id == 'WHB') {
-      companyString = 'wavehomeandbath'
-    } else if (customerRecord.company_id == 'GPS') {
-      companyString = 'gatorplumbingsupply'
-    }
-    linkTextArea.classList.remove('ng-hide')
-    copyTextButton.classList.remove('ng-hide')
-    sendEmailButton.classList.remove('ng-hide')
-    linkTextArea.value = `https://secure.cardknox.com/${companyString}?xCustom01=${customerRecord.customer_id}`
+    const customerRecord = angular.element(document.querySelector(`[id='customer.customer_id']`)).scope()?.record;
 
-    console.log(`Customer: ${customerRecord.customer_id}, Company: ${customerRecord.company_id}`)
-    console.log(`https://secure.cardknox.com/${companyString}?xCustom01=${customerRecord.customer_id}`)
-
-    let sendEmail = (linkTextArea) => {
-      console.log('email clicked')
-      let link = encodeURIComponent(linkTextArea.value)
-      window.location = `mailto:?subject=Payment%20Link&body=See%20below%20link%20to%20pay%20for%20your%20order%3A%0A%0A${link}`
+    if (!customerRecord) {
+      console.error('Customer record not found.');
+      return;
     }
 
-    let copyToClipboard = (linkTextArea) => {
-      // Copy the text inside the text field
-      navigator.clipboard.writeText(linkTextArea.value)
+    const linkTextArea = document.querySelector(`[id='tp_paymentaccount.cf_usersd8fc2']`);
+    const copyTextButton = document.querySelector(`[id='tp_paymentaccount.cb_usersd4e72']`);
+    const sendEmailButton = document.querySelector(`[id='tp_paymentaccount.cb_usersd7da8']`);
+
+    if (!linkTextArea || !copyTextButton || !sendEmailButton) {
+      console.error('Required elements for payment link are missing.');
+      return;
     }
 
-    sendEmailButton.addEventListener('click', () => {
-      sendEmail(linkTextArea)
-    })
-    copyTextButton.addEventListener('click', () => {
-      copyToClipboard(linkTextArea)
-    })
+    // Determine company string
+    const companyString = customerRecord.company_id === 'WHB' ? 'wavehomeandbath' : 'gatorplumbingsupply';
+
+    // Update UI elements
+    linkTextArea.classList.remove('ng-hide');
+    copyTextButton.classList.remove('ng-hide');
+    sendEmailButton.classList.remove('ng-hide');
+    linkTextArea.value = `https://secure.cardknox.com/${companyString}?xCustom01=${customerRecord.customer_id}`;
+
+    console.log(`Payment Link: ${linkTextArea.value}`);
+
+    // Helper Functions
+    const sendEmail = () => {
+      const link = encodeURIComponent(linkTextArea.value);
+      const email = customerRecord?.email_address || '';
+      if (!email) {
+        console.error('No email address found.');
+      }
+      window.location.href = `mailto:${email}?subject=Payment%20Link&body=See%20below%20link%20to%20pay%20for%20your%20order%3A%0A%0A${link}`;
+    };
+
+    const copyToClipboard = () => {
+      navigator.clipboard.writeText(linkTextArea.value).then(
+        () => console.log('Copied to clipboard'),
+        (err) => console.error('Failed to copy text:', err)
+      );
+    };
+
+    // Add Event Listeners
+    sendEmailButton.addEventListener('click', sendEmail);
+    copyTextButton.addEventListener('click', copyToClipboard);
   }
-}
+};
 
-initAutocomplete()
-paymentLink()
+// Initialize Functions
+initializeAutoComplete();
+paymentLink();
 
+// Add Event Listeners
 tabListHeader?.addEventListener('click', () => {
-  setTimeout(() => {
-    initAutocomplete()
-  }, 250)
-  setTimeout(() => {
-    paymentLink()
-  }, 250)
-})
+  setTimeout(() => initializeAutoComplete(), 250);
+  setTimeout(() => paymentLink(), 250);
+});

@@ -1,14 +1,13 @@
 // Create the script tag, set the appropriate attributes
-var script = document.createElement('script')
-script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCYZ3Lh7jBsntbLSL31QqVtC3RVyYEHr9w&loading=async&libraries=places&callback=initMap'
-script.defer = true
+const script = document.createElement('script');
+script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCYZ3Lh7jBsntbLSL31QqVtC3RVyYEHr9w&callback=initMap&libraries=places';
+script.defer = true;
 
 // Attach your callback function to the `window` object
-window.initMap = function () {
+window.initMap = () => {
   // JS API is loaded and available
-
-  console.log('map loaded')
-}
+  console.log('map loaded');
+};
 
 // Append the 'script' element to 'head'
-document.head.appendChild(script)
+document.head.appendChild(script);

@@ -5,9 +5,20 @@
   "description": "Get address info from Google Places API",
   "permissions": ["storage", "tabs", "activeTab"],
   "host_permissions": ["https://*/prophet21/*", "https://*/Prophet21/*"],
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; connect-src 'self' https://gatorps.prokeep.com"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
+  },
+  "action": {
+    "default_icon": {
+      "16": "gator16.png",
+      "24": "gator24.png",
+      "32": "gator32.png"
+    },
+    "default_title": "Places"
   },
   "content_scripts": [
     {
@@ -20,16 +31,5 @@
       "resources": ["loadMap.js", "w_order_entry_sheet.js", "w_ship_to_sheet.js", "w_customer_maint_sheet.js", "w_customer_master_inquiry.js", "w_ship_sheet.js", "autocomplete.js"],
       "matches": ["https://*/*"]
     }
-  ],
-  "action": {
-    "default_icon": {
-      "16": "gator16.png",
-      "24": "gator24.png",
-      "32": "gator32.png"
-    },
-    "default_title": "Places"
-  },
-  "content_security_policy": {
-    "extension_pages": "default-src 'self'; connect-src 'self' https://gatorps.prokeep.com"
-  }
+  ]
 }

@@ -1,17 +1,16 @@
-import { initializeAutocomplete, handlePlaceSelect } from './autocomplete.js';
+import { AutocompleteElement, handlePlaceSelect } from './autocomplete.js';
 
 // Selectors and Global Variables
 const tabListHeader = document.querySelector('#bottomSectionDiv ul');
-const root = angular.element('#contextWindow').scope();
 let autocomplete;
 
 // Initialize Google Places Autocomplete
 const initializeAutoComplete = async () => {
-  if (root.windowMetadata.Sections.bottom.ActivePage === 'PHYSICAL_ADDRESS') {
+  if (tabListHeader.querySelector('.active').dataset.menuItem === 'PHYSICAL_ADDRESS') {
     console.log('initializeAutoComplete');
 
     const autocompleteInputSelector = `[id*='physical_address.phys_address1']`;
-    autocomplete = await initializeAutocomplete(autocompleteInputSelector);
+    autocomplete = await AutocompleteElement(autocompleteInputSelector);
 
     if (autocomplete) {
       google.maps.event.addListener(autocomplete, 'place_changed', () => {
@@ -23,8 +22,8 @@ const initializeAutoComplete = async () => {
 
 // Generate Payment Link
 const paymentLink = async () => {
-  const activeTab = tabListHeader?.querySelector('li.active > a')?.innerHTML;
-  if (activeTab === 'Payment Account') {
+  const activeTab = tabListHeader.querySelector('.active').dataset.menuItem;
+  if (activeTab === 'TP_PAYMENTACCOUNT') {
     console.log('Initializing Payment Link');
 
     const customerRecord = angular.element(document.querySelector(`[id='customer.customer_id']`)).scope()?.record;

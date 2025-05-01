@@ -1,5 +1,5 @@
 // Initialize Google Places Autocomplete
-export const initializeAutocomplete = async (inputSelector) => {
+export const AutocompleteElement = async (inputSelector) => {
   const autocompleteInput = document.querySelector(inputSelector);
 
   if (!autocompleteInput) {
@@ -21,7 +21,9 @@ export const initializeAutocomplete = async (inputSelector) => {
 };
 
 // Handle Place Selection
-export const handlePlaceSelect = async (autocomplete, addressFields, includeName, root) => {
+export const handlePlaceSelect = async (autocomplete, addressFields, includeName) => {
+  const root = angular.element('#contextWindow').scope(); // Ensure root is defined here
+
   if (!autocomplete) {
     console.error('Autocomplete is not initialized.');
     return;
@@ -34,7 +36,7 @@ export const handlePlaceSelect = async (autocomplete, addressFields, includeName
   }
 
   const place = {
-    name: includeName ? addressObject.name || '' : '',
+    name: addressObject.name,
     address1: '',
     address2: '',
     city: '',
@@ -44,8 +46,8 @@ export const handlePlaceSelect = async (autocomplete, addressFields, includeName
 
   // Extract address components
   addressObject.address_components?.forEach((component) => {
-    if (component.types.includes('street_number')) place.address1 = `${component.short_name} `;
-    if (component.types.includes('route')) place.address1 += `${component.short_name}`;
+    if (component.types.includes('street_number')) place.address1 = `${component.short_name}`;
+    if (component.types.includes('route')) place.address1 += ` ${component.short_name}`;
     if (component.types.includes('subpremise')) place.address2 = component.short_name;
     if (component.types.includes('locality')) place.city = component.short_name;
     if (component.types.includes('sublocality_level_1')) place.city = component.short_name;
@@ -57,6 +59,8 @@ export const handlePlaceSelect = async (autocomplete, addressFields, includeName
 
   // Update Angular fields
   for (const component in place) {
+    if (component === 'name' && !includeName) continue; // Skip updating name if includeName is false
+
     const fieldElement = document.querySelector(addressFields)?.querySelector(`[id$=${component}]`);
 
     if (!fieldElement) {
@@ -70,6 +74,7 @@ export const handlePlaceSelect = async (autocomplete, addressFields, includeName
     const angularScope = angular.element(fieldElement).scope();
     angularScope.$apply(() => {
       angularScope.record[fieldName] = place[component];
+      console.log(`Updated field "${fieldName}" with value:`, place[component]);
     });
 
     try {
@@ -107,11 +112,13 @@ const checkDuplicates = async (lookupName, root) => {
     });
     const result = await response.json();
 
-    if (result.value.length > 0) {
+    if (result?.value?.length > 0) {
       console.log('Duplicate Ship To:', result.value);
       alert('Duplicate Ship To');
+    } else {
+      console.log('No duplicates found for address:', lookupName);
     }
   } catch (error) {
-    console.error('Error checking duplicates:', error);
+    console.error('Error checking duplicates:', error.message || error);
   }
 };

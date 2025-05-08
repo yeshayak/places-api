@@ -1,0 +1,19 @@
+name: Deploy on Merge to Master
+on:
+  pull_request:
+    branches:
+      - master
+    types:
+      - closed
+
+jobs:
+  update_local:
+    if: github.event.pull_request.merged == true
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Sync to Local Path
+        run: |
+          cp -r ./extension_folder "H:\gator extention\places-api"

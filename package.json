@@ -1,9 +1,10 @@
 {
   "devDependencies": {
-    "angular": "^1.8.3",
     "@types/angular": "^1.8.9",
     "@types/chrome": "^0.0.313",
+    "@types/estree": "^1.0.7",
     "@types/google.maps": "^3.58.1",
+    "angular": "^1.8.3",
     "typescript": "^5.8.2"
   }
 }

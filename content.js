@@ -18,11 +18,12 @@ const scriptMapping = {
   'Ship To Maintenance:': 'w_ship_to_sheet.js',
   'Customer Maintenance:': 'w_customer_maint_sheet.js',
   'Customer Master Inquiry:': 'w_customer_master_inquiry.js',
+  'Purchase Order Entry:': 'w_purchase_order_entry_sheet.js',
 };
 
 // Listen for messages and inject the appropriate script
 chrome.runtime.onMessage.addListener((request) => {
-  const scriptKey = Object.keys(scriptMapping).find((key) => request.changeInfo.title?.includes(key));
+  const scriptKey = Object.keys(scriptMapping).find((key) => request.changeInfo.title?.startsWith(key));
 
   if (scriptKey) {
     injectScript(chrome.runtime.getURL(scriptMapping[scriptKey]), 'body');

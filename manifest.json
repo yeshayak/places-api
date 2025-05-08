@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Places",
-  "version": "0.3.16",
+  "version": "0.3.17",
   "description": "Get address info from Google Places API",
   "permissions": ["storage", "tabs", "activeTab"],
   "host_permissions": ["https://*/prophet21/*", "https://*/Prophet21/*"],
@@ -28,7 +28,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["loadMap.js", "w_order_entry_sheet.js", "w_ship_to_sheet.js", "w_customer_maint_sheet.js", "w_customer_master_inquiry.js", "w_ship_sheet.js", "autocomplete.js"],
+      "resources": ["loadMap.js", "w_order_entry_sheet.js", "w_ship_to_sheet.js", "w_customer_maint_sheet.js", "w_customer_master_inquiry.js", "w_ship_sheet.js", "w_purchase_order_entry_sheet.js", "autocomplete.js"],
       "matches": ["https://*/*"]
     }
   ]

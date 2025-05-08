@@ -4,8 +4,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tabInfo) => {
       tabInfo.url.includes('/window/w_ship_to_sheet') ||
       tabInfo.url.includes('/window/w_customer_maint_sheet') ||
       tabInfo.url.includes('/window/w_customer_master_inquiry') ||
-      tabInfo.url.includes('/window/w_ship_sheet')) &&
-    changeInfo.title
+      tabInfo.url.includes('/window/w_ship_sheet') ||
+      tabInfo.url.includes('/window/w_purchase_order_entry_sheet')) &&
+    changeInfo.title &&
+    changeInfo.title != 'Prophet 21'
   ) {
     chrome.tabs.sendMessage(tabId, { changeInfo: changeInfo });
 

@@ -1,14 +1,11 @@
-name: Deploy on Merge to Master
+name: Deploy on Dev Merge to Master
 on:
-  pull_request:
+  push:
     branches:
       - master
-    types:
-      - closed
 
 jobs:
   update_local:
-    if: github.event.pull_request.merged == true
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -16,4 +13,4 @@ jobs:
 
       - name: Sync to Local Path
         run: |
-          cp -r ./extension_folder "H:\gator extention\places-api"
+          Copy-Item -Path "./extension_folder/*" -Destination "H:\gator extention\places-api" -Recurse -Force

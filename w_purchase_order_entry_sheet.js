@@ -1,20 +1,24 @@
+import { getUserSession } from './utils/userSession.js';
+
 console.log('Loaded w_purchase_order_entry_sheet');
 
 // Function to handle supplier cost update
 const handleSupplierCostUpdate = (target) => {
   if (target instanceof HTMLElement) {
+    const userSession = getUserSession();
+    if (!userSession) return;
     const root = angular.element('#contextWindow').scope();
     const targetScope = angular.element(target).scope().dataItem;
 
-    const cost = target.value; // Use `cost` as a variable
+    const { token, p21SoaUrl } = userSession;
+    const cost = target.value;
     const confirmUpdate = confirm(`The unit price has changed to ${cost}. Do you want to update the supplier cost?`);
     if (confirmUpdate) {
       console.log(`Supplier cost updated to: ${cost}`);
 
-      // Variables for token, supplier_id, and item_id
-      const token = root.userSession?.token; // Replace with actual token
-      const supplier_id = root.windowData['TABPAGE_1.tp_1_dw_1'][0].vendor_supplier_id; // Replace with actual supplier ID
-      const item_id = targetScope.item_id; // Replace with actual item ID
+      // Variables for token, supplier_id, item_id, and base URL
+      const supplier_id = root.windowData['TABPAGE_1.tp_1_dw_1'][0].vendor_supplier_id;
+      const item_id = targetScope.item_id;
       console.log('Token:', token);
       console.log('Supplier ID:', supplier_id);
       console.log('Item ID:', item_id);
@@ -25,7 +29,6 @@ const handleSupplierCostUpdate = (target) => {
       myHeaders.append('accept', 'application/json');
       myHeaders.append('Content-Type', 'application/json');
       myHeaders.append('Authorization', `Bearer ${token}`);
-      myHeaders.append('Cookie', 'ASP.NET_SessionId=2daajwfsec5eo3a2udqmrhhn');
 
       // Prepare request body
       const raw = JSON.stringify({
@@ -44,14 +47,7 @@ const handleSupplierCostUpdate = (target) => {
                 Keys: ['item_id'],
                 Rows: [
                   {
-                    Edits: [
-                      {
-                        Name: 'item_id',
-                        Value: item_id,
-                        IgnoreIfEmpty: true,
-                      },
-                    ],
-                    RelativeDateEdits: [],
+                    Edits: [{ Name: 'item_id', Value: item_id, IgnoreIfEmpty: true }],
                   },
                 ],
               },
@@ -63,23 +59,13 @@ const handleSupplierCostUpdate = (target) => {
                 Rows: [
                   {
                     Edits: [
-                      {
-                        Name: 'supplier_id',
-                        Value: supplier_id,
-                        IgnoreIfEmpty: true,
-                      },
-                      {
-                        Name: 'cost',
-                        Value: cost,
-                        IgnoreIfEmpty: true,
-                      },
+                      { Name: 'supplier_id', Value: supplier_id, IgnoreIfEmpty: true },
+                      { Name: 'cost', Value: cost, IgnoreIfEmpty: true },
                     ],
-                    RelativeDateEdits: [],
                   },
                 ],
               },
             ],
-            Documents: null,
           },
         ],
         Query: null,
@@ -92,11 +78,10 @@ const handleSupplierCostUpdate = (target) => {
         method: 'POST',
         headers: myHeaders,
         body: raw,
-        redirect: 'follow',
       };
 
       // Send the POST request
-      fetch('https://p21live.gatorps.com/uiserver0/api/v2/transaction', requestOptions)
+      fetch(`${p21SoaUrl}/uiserver0/api/v2/transaction`, requestOptions)
         .then((response) => response.text())
         .then((result) => console.log('Update result:', result))
         .catch((error) => console.error('Error updating supplier cost:', error));

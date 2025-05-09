@@ -1,5 +1,6 @@
 import { AutocompleteElement, handlePlaceSelect } from './autocomplete.js';
 
+console.log('Loaded w_customer_master_inquiry.js');
 // Selectors and Global Variables
 const tabListHeader = document.querySelector('#bottomSectionDiv ul');
 let autocomplete;

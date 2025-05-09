@@ -1,3 +1,5 @@
+import { getUserSession } from './utils/userSession.js';
+
 // Initialize Google Places Autocomplete
 export const AutocompleteElement = async (inputSelector) => {
   const autocompleteInput = document.querySelector(inputSelector);
@@ -92,11 +94,14 @@ export const handlePlaceSelect = async (autocomplete, addressFields, includeName
 
 // Check for Duplicate Addresses
 const checkDuplicates = async (lookupName, root) => {
-  const customerId = root.windowData['TABPAGE_1.order'][0]?.customer_id;
-  const token = root.userSession?.token;
+  const userSession = getUserSession();
+  if (!userSession) return;
 
-  if (!customerId || !token) {
-    console.error('Customer ID or token is missing.');
+  const { token, p21SoaUrl } = userSession;
+  const customerId = root.windowData['TABPAGE_1.order'][0]?.customer_id;
+
+  if (!customerId) {
+    console.error('Customer ID is missing.');
     return;
   }
 
@@ -106,10 +111,7 @@ const checkDuplicates = async (lookupName, root) => {
   });
 
   try {
-    const response = await fetch(`https://p21live.gatorps.com/odataservice/odata/view/ice_ship_to_address?$filter=delete_flag eq 'N' and customer_id eq ${customerId} and contains(phys_address1, '${lookupName}')&$count=true`, {
-      method: 'GET',
-      headers,
-    });
+    const response = await fetch(`${p21SoaUrl}/odataservice/odata/view/ice_ship_to_address?$filter=delete_flag eq 'N' and customer_id eq ${customerId} and contains(phys_address1, '${lookupName}')&$count=true`, { method: 'GET', headers });
     const result = await response.json();
 
     if (result?.value?.length > 0) {

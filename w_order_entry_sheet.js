@@ -1,5 +1,6 @@
 import { AutocompleteElement, handlePlaceSelect } from './autocomplete.js';
 
+console.log('Loaded w_order_entry_sheet.js');
 // Selectors and Global Variables
 const tabListHeader = document.querySelector('#p21TabsetDir ul');
 let autocomplete;

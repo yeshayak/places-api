@@ -28,7 +28,18 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["loadMap.js", "w_order_entry_sheet.js", "w_ship_to_sheet.js", "w_customer_maint_sheet.js", "w_customer_master_inquiry.js", "w_ship_sheet.js", "w_purchase_order_entry_sheet.js", "autocomplete.js", "utils/userSession.js"],
+      "resources": [
+        "loadMap.js",
+        "w_order_entry_sheet.js",
+        "w_ship_to_sheet.js",
+        "w_customer_maint_sheet.js",
+        "w_customer_master_inquiry.js",
+        "w_ship_sheet.js",
+        "w_purchase_order_entry_sheet.js",
+        "autocomplete.js",
+        "utils/userSession.js",
+        "utils/duplicateCheck.js"
+      ],
       "matches": ["https://*/*"]
     }
   ]

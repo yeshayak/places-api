@@ -21,8 +21,7 @@ const initializeAutocomplete = async () => {
 
 // Generate Payment Link
 const paymentLink = async () => {
-  const root = angular.element('#contextWindow').scope();
-  if (root.windowMetadata.Sections.top.ActivePage === 'TP_REMITTANCES') {
+  if (tabListHeader.querySelector('.active').dataset.menuItem === 'TP_REMITTANCES') {
     console.log('Initializing Payment Link');
 
     const recalculateTotals = document.querySelector('[id="remittotals.recalculate_t"]');

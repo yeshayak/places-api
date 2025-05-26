@@ -9,6 +9,7 @@ const handleSupplierCostUpdate = (target) => {
     if (!userSession) return;
     const root = angular.element('#contextWindow').scope();
     const targetScope = angular.element(target).scope().dataItem;
+    // document.querySelector('#tp_17_dw_17').querySelector('.k-grid-content');
 
     const { token, p21SoaUrl } = userSession;
     const cost = target.value;

@@ -1,4 +1,4 @@
-import { getUserSession } from './utils/userSession.js';
+import { duplicateCheck } from './utils/duplicateCheck.js';
 
 // Initialize Google Places Autocomplete
 export const AutocompleteElement = async (inputSelector) => {
@@ -24,8 +24,6 @@ export const AutocompleteElement = async (inputSelector) => {
 
 // Handle Place Selection
 export const handlePlaceSelect = async (autocomplete, addressFields, includeName) => {
-  const root = angular.element('#contextWindow').scope(); // Ensure root is defined here
-
   if (!autocomplete) {
     console.error('Autocomplete is not initialized.');
     return;
@@ -87,40 +85,7 @@ export const handlePlaceSelect = async (autocomplete, addressFields, includeName
   }
 
   // Check for duplicates if address1 is updated
-  if (place.address1 && root?.windowData) {
-    checkDuplicates(place.address1, root);
-  }
-};
-
-// Check for Duplicate Addresses
-const checkDuplicates = async (lookupName, root) => {
-  const userSession = getUserSession();
-  if (!userSession) return;
-
-  const { token, p21SoaUrl } = userSession;
-  const customerId = root.windowData['TABPAGE_1.order'][0]?.customer_id;
-
-  if (!customerId) {
-    console.error('Customer ID is missing.');
-    return;
-  }
-
-  const headers = new Headers({
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  });
-
-  try {
-    const response = await fetch(`${p21SoaUrl}/odataservice/odata/view/ice_ship_to_address?$filter=delete_flag eq 'N' and customer_id eq ${customerId} and contains(phys_address1, '${lookupName}')&$count=true`, { method: 'GET', headers });
-    const result = await response.json();
-
-    if (result?.value?.length > 0) {
-      console.log('Duplicate Ship To:', result.value);
-      alert('Duplicate Ship To');
-    } else {
-      console.log('No duplicates found for address:', lookupName);
-    }
-  } catch (error) {
-    console.error('Error checking duplicates:', error.message || error);
+  if (place.address1) {
+    duplicateCheck(place.address1);
   }
 };

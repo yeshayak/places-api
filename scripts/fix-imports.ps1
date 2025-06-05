@@ -4,7 +4,7 @@ Write-Host "Starting import path fix process..."
 $distPath = Join-Path $PSScriptRoot "..\dist"
 $distPath = Resolve-Path $distPath
 
-Write-Host "Scanning directory: $distPath"
+Write-Host "Processing JavaScript files..."
 
 # Get all JS files recursively
 $files = Get-ChildItem -Path $distPath -Recurse -Filter "*.js"

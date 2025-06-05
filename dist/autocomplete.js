@@ -58,10 +58,15 @@ export const handlePlaceSelect = async (autocomplete, addressFields, includeName
     const id = fieldElement.id;
     const fieldName = id.split('.')[1];
     const angularScope = angular.element(fieldElement).scope();
-    angularScope.$apply(() => {
-      angularScope.record[fieldName] = place[component];
-      console.log(`Updated field "${fieldName}" with value:`, place[component]);
-    });
+    const value = place[component];
+    if (value !== undefined) {
+      angularScope.$apply(() => {
+        if (angularScope.record) {
+          angularScope.record[fieldName] = value;
+          console.log(`Updated field "${fieldName}" with value:`, value);
+        }
+      });
+    }
     try {
       await angularScope.onChange();
     } catch (error) {

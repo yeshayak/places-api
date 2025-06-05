@@ -60,7 +60,6 @@ export const handlePlaceSelect = async (autocomplete: google.maps.places.Autocom
     if (component.types.includes('administrative_area_level_1')) place.state = component.short_name;
     if (component.types.includes('postal_code')) place.postal_code = component.short_name;
   });
-
   console.log('Selected Place:', place);
 
   // Update Angular fields
@@ -78,10 +77,16 @@ export const handlePlaceSelect = async (autocomplete: google.maps.places.Autocom
     const fieldName = id.split('.')[1];
 
     const angularScope = angular.element(fieldElement).scope() as CustomScope;
-    angularScope.$apply(() => {
-      angularScope.record[fieldName] = place[component as keyof Place];
-      console.log(`Updated field "${fieldName}" with value:`, place[component]);
-    });
+    const value = place[component as keyof Place];
+
+    if (value !== undefined) {
+      angularScope.$apply(() => {
+        if (angularScope.record) {
+          angularScope.record[fieldName] = value;
+          console.log(`Updated field "${fieldName}" with value:`, value);
+        }
+      });
+    }
 
     try {
       await angularScope.onChange();

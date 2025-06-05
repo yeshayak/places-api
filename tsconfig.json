@@ -9,10 +9,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "allowJs": true,
-    "checkJs": false,
+    "allowJs": false,
     "noEmitOnError": false,
-    "strict": false,
+    "strict": true,
     "allowUmdGlobalAccess": true,
     "typeRoots": ["./node_modules/@types", "./types"],
     "paths": {

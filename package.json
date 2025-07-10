@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "build": "tsc && pwsh ./scripts/fix-imports.ps1",
+    "build": "tsc && pwsh ./scripts/fix-imports.ps1 && pwsh ./scripts/copy-static.ps1",
     "watch": "tsc --watch"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Places",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Get address info from Google Places API",
   "permissions": ["storage", "tabs", "activeTab", "scripting"],
   "host_permissions": ["https://*/prophet21/*", "https://*/Prophet21/*"],
@@ -9,7 +9,7 @@
     "extension_pages": "default-src 'self'; connect-src 'self' https://gatorps.prokeep.com"
   },
   "background": {
-    "service_worker": "dist/background.js",
+    "service_worker": "background.js",
     "type": "module"
   },
   "action": {
@@ -18,27 +18,28 @@
       "24": "gator24.png",
       "32": "gator32.png"
     },
-    "default_title": "Places"
+    "default_title": "Places",
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {
       "matches": ["https://*/prophet21/*", "https://*/Prophet21/*"],
-      "js": ["dist/content.js"]
+      "js": ["content.js"]
     }
   ],
   "web_accessible_resources": [
     {
       "resources": [
-        "dist/config.js",
-        "dist/loadMap.js",
-        "dist/autocomplete.js",
-        "dist/w_order_entry_sheet.js",
-        "dist/w_ship_to_sheet.js",
-        "dist/w_customer_maint_sheet.js",
-        "dist/w_customer_master_inquiry.js",
-        "dist/w_purchase_order_entry_sheet.js",
-        "dist/utils/userSession.js",
-        "dist/utils/duplicateCheck.js"
+        "config.js",
+        "loadMap.js",
+        "autocomplete.js",
+        "w_order_entry_sheet.js",
+        "w_ship_to_sheet.js",
+        "w_customer_maint_sheet.js",
+        "w_customer_master_inquiry.js",
+        "w_purchase_order_entry_sheet.js",
+        "utils/userSession.js",
+        "utils/duplicateCheck.js"
       ],
       "matches": ["https://*/*"]
     }

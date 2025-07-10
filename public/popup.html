@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Places API Config</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h2>Places API Settings</h2>
+      <form id="config-form">
+        <label for="apiKey">Google Maps API Key</label>
+        <input type="text" id="apiKey" name="apiKey" placeholder="Enter your API key" required />
+        <label for="baseUrl">Base URL</label>
+        <input type="text" id="baseUrl" name="baseUrl" placeholder="https://your-base-url.com" required />
+        <button type="submit">Save</button>
+        <div id="status"></div>
+      </form>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

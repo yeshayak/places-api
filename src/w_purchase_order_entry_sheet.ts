@@ -1,3 +1,4 @@
+/// <reference types="angular" />
 import { getUserSession } from './utils/userSession';
 
 console.log('Loaded w_purchase_order_entry_sheet');

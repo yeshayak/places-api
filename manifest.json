@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Places",
-  "version": "0.4.1",
+  "version": "0.4.4",
   "description": "Get address info from Google Places API",
   "permissions": ["storage", "tabs", "activeTab", "scripting"],
   "host_permissions": ["https://*/prophet21/*", "https://*/Prophet21/*"],
@@ -29,6 +29,7 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "dist/config.js",
         "dist/loadMap.js",
         "dist/autocomplete.js",
         "dist/w_order_entry_sheet.js",

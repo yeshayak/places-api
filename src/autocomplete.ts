@@ -1,102 +1,152 @@
 /// <reference types="angular" />
+/// <reference types="google.maps" />
+
 import { duplicateCheck } from './utils/duplicateCheck';
+import { loadGoogleMaps } from './loadMap';
 
 interface CustomScope extends ng.IScope {
   record: Record<string, string>;
   onChange(): Promise<void>;
 }
 
-// Initialize Google Places Autocomplete
-export const AutocompleteElement = async (inputSelector: string): Promise<google.maps.places.Autocomplete | null> => {
-  const autocompleteInput = document.querySelector<HTMLInputElement>(inputSelector);
+interface AddressComponent {
+  long_name: string;
+  short_name: string;
+  types: string[];
+}
 
-  if (!autocompleteInput) {
-    console.error(`Input element not found for selector: ${inputSelector}`);
+/**
+ * Initialize Google Places Autocomplete with the new Places API
+ * @param inputSelector - The CSS selector for the input element
+ * @returns Promise resolving to the Autocomplete instance or null
+ */
+export const AutocompleteElement = async (inputSelector: string): Promise<google.maps.places.Autocomplete | null> => {
+  try {
+    // Wait for Google Maps API to be loaded
+    await loadGoogleMaps();
+
+    const autocompleteInput = document.querySelector<HTMLInputElement>(inputSelector);
+
+    if (!autocompleteInput) {
+      console.error(`Input element not found for selector: ${inputSelector}`);
+      return null;
+    }
+
+    const autocomplete = new google.maps.places.Autocomplete(autocompleteInput, {
+      componentRestrictions: { country: 'us' },
+      fields: ['address_components', 'formatted_address', 'name', 'geometry.location', 'place_id'],
+    });
+
+    // Prevent form submission on enter
+    autocompleteInput.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+      }
+    });
+
+    // Disable browser's autofill
+    autocompleteInput.setAttribute('autocomplete', 'new-password');
+
+    console.log(`Autocomplete initialized for input: ${inputSelector}`);
+    return autocomplete;
+  } catch (error) {
+    console.error('Error initializing Places Autocomplete:', error);
     return null;
   }
-
-  const autocomplete = new google.maps.places.Autocomplete(autocompleteInput, {
-    componentRestrictions: { country: 'us' },
-    fields: ['address_components', 'formatted_address', 'name'],
-  });
-
-  autocompleteInput.onfocus = () => {
-    autocompleteInput.autocomplete = 'new-password';
-  };
-
-  console.log(`Autocomplete initialized for input: ${inputSelector}`);
-  return autocomplete;
 };
 
-// Handle Place Selection
+/**
+ * Handle place selection from the Autocomplete widget
+ * @param autocomplete - The Autocomplete instance
+ * @param addressFields - The selector for address fields container
+ * @param includeName - Whether to include the place name
+ */
 export const handlePlaceSelect = async (autocomplete: google.maps.places.Autocomplete, addressFields: string, includeName: boolean): Promise<void> => {
   if (!autocomplete) {
     console.error('Autocomplete is not initialized.');
     return;
   }
 
-  const addressObject = autocomplete.getPlace();
-  if (!addressObject) {
-    console.error('No place selected.');
-    return;
-  }
-
-  const place: Place = {
-    name: addressObject.name,
-    address1: '',
-    address2: '',
-    city: '',
-    state: '',
-    postal_code: '',
-  };
-
-  // Extract address components
-  addressObject.address_components?.forEach((component) => {
-    if (component.types.includes('street_number')) place.address1 = `${component.short_name}`;
-    if (component.types.includes('route')) place.address1 += ` ${component.short_name}`;
-    if (component.types.includes('subpremise')) place.address2 = component.short_name;
-    if (component.types.includes('locality')) place.city = component.short_name;
-    if (component.types.includes('sublocality_level_1')) place.city = component.short_name;
-    if (component.types.includes('administrative_area_level_1')) place.state = component.short_name;
-    if (component.types.includes('postal_code')) place.postal_code = component.short_name;
-  });
-  console.log('Selected Place:', place);
-
-  // Update Angular fields
-  for (const component in place) {
-    if (component === 'name' && !includeName) continue; // Skip updating name if includeName is false
-
-    const fieldElement = document.querySelector(addressFields)?.querySelector(`[id$=${component}]`);
-
-    if (!fieldElement) {
-      console.warn(`Field for component "${component}" not found.`);
-      continue;
+  try {
+    const addressObject = await autocomplete.getPlace();
+    if (!addressObject || !addressObject.address_components) {
+      console.error('Invalid place selection.');
+      return;
     }
 
-    const id = fieldElement.id;
-    const fieldName = id.split('.')[1];
+    const place: Place = {
+      name: addressObject.name ?? '',
+      address1: '',
+      address2: '',
+      city: '',
+      state: '',
+      postal_code: '',
+    };
 
-    const angularScope = angular.element(fieldElement).scope() as CustomScope;
-    const value = place[component as keyof Place];
+    // Extract address components using the new API format
+    addressObject.address_components.forEach((component: AddressComponent) => {
+      const value = component.short_name;
 
-    if (value !== undefined) {
-      angularScope.$apply(() => {
-        if (angularScope.record) {
-          angularScope.record[fieldName] = value;
-          console.log(`Updated field "${fieldName}" with value:`, value);
-        }
-      });
+      switch (true) {
+        case component.types.includes('street_number'):
+          place.address1 = value;
+          break;
+        case component.types.includes('route'):
+          place.address1 = place.address1 ? `${place.address1} ${value}` : value;
+          break;
+        case component.types.includes('subpremise'):
+          place.address2 = value;
+          break;
+        case component.types.includes('locality'):
+        case component.types.includes('sublocality_level_1'):
+          place.city = value;
+          break;
+        case component.types.includes('administrative_area_level_1'):
+          place.state = value;
+          break;
+        case component.types.includes('postal_code'):
+          place.postal_code = value;
+          break;
+      }
+    });
+
+    console.log('Selected Place:', place);
+
+    // Update Angular fields
+    for (const [component, value] of Object.entries(place)) {
+      if (component === 'name' && !includeName) continue;
+
+      const fieldElement = document.querySelector(addressFields)?.querySelector(`[id$=${component}]:not([disabled])`);
+      if (!fieldElement) {
+        console.warn(`Field for component "${component}" not found.`);
+        continue;
+      }
+
+      const fieldName = fieldElement.id.split('.')[1];
+      const angularScope = angular.element(fieldElement).scope() as CustomScope;
+
+      try {
+        await new Promise<void>((resolve) => {
+          angularScope.$apply(() => {
+            if (angularScope.record) {
+              angularScope.record[fieldName] = value;
+              console.log(`Updated field "${fieldName}" with value:`, value);
+            }
+            resolve();
+          });
+        });
+
+        await angularScope.onChange();
+      } catch (error) {
+        console.error(`Error updating field "${fieldName}":`, error);
+      }
     }
 
-    try {
-      await angularScope.onChange();
-    } catch (error) {
-      console.error(`Error updating field "${fieldName}":`, error);
+    // Check for duplicates if address1 is updated
+    if (place.address1) {
+      await duplicateCheck(place.address1);
     }
-  }
-
-  // Check for duplicates if address1 is updated
-  if (place.address1) {
-    duplicateCheck(place.address1);
+  } catch (error) {
+    console.error('Error handling place selection:', error);
   }
 };

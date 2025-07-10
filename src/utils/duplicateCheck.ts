@@ -12,6 +12,11 @@ type RootScope = AngularScope & {
   windowData: WindowData;
 };
 
+interface ODataResponse {
+  '@odata.count': number;
+  value: [];
+}
+
 export const duplicateCheck = async (lookupName: string, root = angular.element('#contextWindow'), customerIdKey = 'TABPAGE_1.order'): Promise<void> => {
   if (!root) {
     console.error('Root scope is not available.');
@@ -36,9 +41,9 @@ export const duplicateCheck = async (lookupName: string, root = angular.element(
 
   try {
     const response = await fetch(`${p21SoaUrl}/odataservice/odata/view/ice_ship_to_address?$filter=delete_flag eq 'N' and customer_id eq ${customerId} and contains(phys_address1, '${lookupName}')&$count=true`, { method: 'GET', headers });
-    const result = await response.json();
+    const result: ODataResponse = await response.json();
 
-    if (result?.value?.length > 0) {
+    if (result['@odata.count'] > 0) {
       console.log('Duplicate Ship To:', result.value);
       alert('Duplicate Ship To');
     } else {

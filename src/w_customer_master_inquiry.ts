@@ -45,14 +45,9 @@ const paymentLink = async (): Promise<void> => {
       return;
     }
 
-    const linkTextArea = document.querySelector(`[id='tp_paymentaccount.cf_usersd8fc2']`) as HTMLTextAreaElement | null;
-    const copyTextButton = document.querySelector(`[id='tp_paymentaccount.cb_usersd4e72']`) as HTMLElement | null;
-    const sendEmailButton = document.querySelector(`[id='tp_paymentaccount.cb_usersd7da8']`) as HTMLElement | null;
-
-    if (!linkTextArea || !copyTextButton || !sendEmailButton) {
-      console.error('Required elements for payment link are missing.');
-      return;
-    }
+    const linkTextArea = document.querySelector(`[id='tp_paymentaccount.cf_usersd8fc2']`) as HTMLTextAreaElement;
+    const copyTextButton = document.querySelector(`[id='tp_paymentaccount.cb_usersd4e72']`) as HTMLElement;
+    const sendEmailButton = document.querySelector(`[id='tp_paymentaccount.cb_usersd7da8']`) as HTMLElement;
 
     // Determine company string
     const companyString = customerRecord.company_id === 'WHB' ? 'wavehomeandbath' : 'gatorplumbingsupply';

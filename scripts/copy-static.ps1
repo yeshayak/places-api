@@ -1,0 +1,1 @@
+Copy-Item "$PSScriptRoot/../public/*" "$PSScriptRoot/../dist/" -Recurse -Force 

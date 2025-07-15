@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Places",
+  "version": "0.4.4",
+  "description": "Get address info from Google Places API",
+  "permissions": ["scripting", "storage", "activeTab"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; connect-src 'self' https://gatorps.prokeep.com"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_icon": {
+      "16": "gator16.png",
+      "24": "gator24.png",
+      "32": "gator32.png"
+    },
+    "default_title": "Places",
+    "default_popup": "popup.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "config.js",
+        "loadMap.js",
+        "autocomplete.js",
+        "w_order_entry_sheet.js",
+        "w_ship_to_sheet.js",
+        "w_customer_maint_sheet.js",
+        "w_customer_master_inquiry.js",
+        "w_purchase_order_entry_sheet.js",
+        "utils/userSession.js",
+        "utils/duplicateCheck.js"
+      ],
+      "matches": ["https://*/*"]
+    }
+  ]
+}

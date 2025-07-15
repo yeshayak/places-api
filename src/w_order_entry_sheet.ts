@@ -1,4 +1,5 @@
 import { AutocompleteElement, handlePlaceSelect } from './autocomplete';
+import { setupPaymentLink, PaymentLinkConfig, PaymentLinkData } from './utils/paymentLink';
 
 console.log('Loaded w_order_entry_sheet.js');
 
@@ -45,69 +46,47 @@ const initializeAutocomplete = async (): Promise<void> => {
 
 // Generate Payment Link
 const paymentLink = async (): Promise<void> => {
-  const activeTab = tabListHeader?.querySelector('.active') as HTMLElement;
-  if (activeTab?.dataset.menuItem === 'TP_REMITTANCES') {
-    console.log('Initializing Payment Link');
+  const orderElement = document.querySelector('[id="order.order_no"]');
+  const paymentElement = document.querySelector('[id="remittotals.cf_balance"]');
+  const contactElement = document.querySelector('[id="tp_contacts.contact_id"]');
+  const customerElement = document.querySelector('[id="tp_customer.email_address"]');
 
-    const recalculateTotals = document.querySelector('[id="remittotals.recalculate_t"]') as HTMLElement | null;
-    const orderElement = document.querySelector('[id="order.order_no"]');
-    const paymentElement = document.querySelector('[id="remittotals.cf_balance"]');
-    const contactElement = document.querySelector('[id="tp_contacts.contact_id"]');
-    const customerElement = document.querySelector('[id="tp_customer.email_address"]');
-    const linkTextArea = document.querySelector('[id="remittotals.cf_usersd22bd"]') as HTMLTextAreaElement | null;
-    const copyTextButton = document.querySelector('[id="remittotals.cb_usersd23fc"]') as HTMLElement | null;
-    const sendEmailButton = document.querySelector('[id="remittotals.cb_usersd66af"]') as HTMLElement | null;
+  const orderScope = orderElement ? (angular.element(orderElement).scope() as CustomScope) : null;
+  const paymentScope = paymentElement ? (angular.element(paymentElement).scope() as CustomScope) : null;
+  const contactScope = contactElement ? (angular.element(contactElement).scope() as CustomScope) : null;
+  const customerScope = customerElement ? (angular.element(customerElement).scope() as CustomScope) : null;
 
-    const orderScope = orderElement ? (angular.element(orderElement).scope() as CustomScope) : null;
-    const paymentScope = paymentElement ? (angular.element(paymentElement).scope() as CustomScope) : null;
-    const contactScope = contactElement ? (angular.element(contactElement).scope() as CustomScope) : null;
-    const customerScope = customerElement ? (angular.element(customerElement).scope() as CustomScope) : null;
+  const orderRecord = orderScope?.record as OrderRecord;
+  const paymentRecord = paymentScope?.record as PaymentRecord;
+  const contactRecord = contactScope?.record as ContactRecord;
+  const customerRecord = customerScope?.record as CustomerRecord;
 
-    const orderRecord = orderScope?.record as OrderRecord;
-    const paymentRecord = paymentScope?.record as PaymentRecord;
-    const contactRecord = contactScope?.record as ContactRecord;
-    const customerRecord = customerScope?.record as CustomerRecord;
-
-    if (!orderRecord || !paymentRecord || !linkTextArea || !copyTextButton || !sendEmailButton) {
-      console.error('Required elements or records are missing.');
-      return;
-    }
-
-    const balance = (paymentRecord.cf_balance - paymentRecord.c_unapplied_dp)?.toFixed(2);
-    if (!balance) {
-      console.error('Balance is undefined or invalid.');
-      return;
-    }
-
-    const companyString = orderRecord.company_id === 'WHB' ? 'wavehomeandbath' : 'gatorplumbingsupply';
-
-    linkTextArea.classList.remove('ng-hide');
-    copyTextButton.classList.remove('ng-hide');
-    sendEmailButton.classList.remove('ng-hide');
-    linkTextArea.value = `https://secure.cardknox.com/${companyString}?xAmount=${balance}&xInvoice=${orderRecord.order_no}&xCustom01=${orderRecord.customer_id}`;
-
-    console.log(`Payment Link: ${linkTextArea.value}`);
-
-    const sendEmail = () => {
-      const link = encodeURIComponent(linkTextArea.value);
-      const email = contactRecord?.email_address || customerRecord?.email_address || '';
-      if (!email) {
-        console.error('No email address found.');
-      }
-      window.location.href = `mailto:${email}?subject=Payment%20Link&body=See%20below%20link%20to%20pay%20for%20your%20order%3A%0A%0A${link}`;
-    };
-
-    const copyToClipboard = () => {
-      navigator.clipboard.writeText(linkTextArea.value).then(
-        () => console.log('Copied to clipboard'),
-        (err) => console.error('Failed to copy text:', err)
-      );
-    };
-
-    sendEmailButton.addEventListener('click', sendEmail);
-    copyTextButton.addEventListener('click', copyToClipboard);
-    recalculateTotals?.addEventListener('click', paymentLink);
+  if (!orderRecord || !paymentRecord || !customerRecord) {
+    console.error('Required records are missing.');
+    return;
   }
+
+  const config: PaymentLinkConfig = {
+    requiredTab: 'TP_REMITTANCES',
+    linkTextAreaSelector: '[id="remittotals.cf_usersd22bd"]',
+    copyButtonSelector: '[id="remittotals.cb_usersd23fc"]',
+    sendEmailButtonSelector: '[id="remittotals.cb_usersd66af"]',
+    includeAmount: true,
+    includeInvoice: true
+  };
+
+  const data: PaymentLinkData = {
+    customerRecord: orderRecord, // orderRecord contains customer info
+    orderRecord,
+    paymentRecord,
+    contactRecord
+  };
+
+  await setupPaymentLink(config, data, tabListHeader);
+
+  // Add recalculate totals event listener after payment link setup
+  const recalculateTotals = document.querySelector('[id="remittotals.recalculate_t"]') as HTMLElement | null;
+  recalculateTotals?.addEventListener('click', paymentLink);
 };
 
 // Initialize Functions

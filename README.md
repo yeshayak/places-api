@@ -40,3 +40,9 @@ The extension will automatically activate on Prophet21 pages and provide autocom
 - `src/config.example.ts` - Template for API key configuration
 - `src/loadMap.ts` - Handles Google Maps API loading
 - `src/autocomplete.ts` - Main autocomplete functionality
+
+## Privacy Policy
+
+This extension does not collect, store, or transmit any personal or sensitive user data. All address queries are sent directly to the Google Maps API for autocomplete functionality and are not accessed or stored by the extension. User preferences (such as API keys) are stored locally in the browser and never transmitted externally.
+
+If you have any questions, contact: [your email address]

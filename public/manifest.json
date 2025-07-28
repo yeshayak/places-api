@@ -3,7 +3,7 @@
   "name": "Places",
   "version": "0.4.4",
   "description": "Get address info from Google Places API",
-  "permissions": ["scripting", "storage", "activeTab"],
+  "permissions": ["scripting", "storage"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "content_security_policy": {
     "extension_pages": "default-src 'self'; connect-src 'self' https://gatorps.prokeep.com"

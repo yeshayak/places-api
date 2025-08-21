@@ -1,38 +1,123 @@
+/* Popup HTML CSS */
+body {
+  background: #f7f7f7;
+  margin: 0;
+  padding: 0;
+  min-width: 320px;
+  min-height: 320px;
+  font-family: Arial, sans-serif;
+}
+
 .container {
   width: 300px;
   padding: 20px;
-  font-family: Arial, sans-serif;
+  background: #fff;
+  margin: 0 auto;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
+
 h2 {
   margin-top: 0;
+  margin-bottom: 16px;
+  font-size: 20px;
+  color: #1976d2;
+  text-align: center;
+  font-weight: 600;
 }
+
 label {
   display: block;
   margin-top: 10px;
   font-weight: bold;
+  color: #333;
+  font-size: 14px;
 }
-input[type="text"] {
+
+input[type='text'] {
   width: 100%;
-  padding: 6px;
+  padding: 6px 8px;
   margin-top: 4px;
+  margin-bottom: 8px;
   box-sizing: border-box;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 15px;
+  transition: border 0.2s;
 }
+
+input[type='text']:focus {
+  border: 1.5px solid #1976d2;
+  outline: none;
+}
+
 button {
   margin-top: 16px;
   width: 100%;
-  padding: 8px;
+  padding: 10px 0;
   background: #1976d2;
   color: #fff;
   border: none;
   border-radius: 4px;
   font-size: 16px;
+  font-weight: 600;
   cursor: pointer;
+  transition: background 0.2s;
 }
-button:hover {
+
+button:hover,
+button:focus {
   background: #1565c0;
 }
+
 #status {
   margin-top: 10px;
   color: green;
   font-size: 14px;
+  min-height: 18px;
+}
+
+#site-enable-container {
+  margin-top: 18px;
+  text-align: center;
+}
+
+#enable-site-btn {
+  background: #43a047;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 0;
+  width: 100%;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#enable-site-btn.show {
+  display: block;
+}
+
+#enable-site-btn:hover,
+#enable-site-btn:focus {
+  background: #388e3c;
+}
+
+#site-enabled-msg {
+  display: none;
+  color: #43a047;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+#site-enabled-msg.show {
+  display: inline;
+}
+
+.hide {
+  display: none !important;
+}
+.show {
+  display: inline !important;
 }

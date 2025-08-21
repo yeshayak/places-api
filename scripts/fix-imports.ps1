@@ -1,61 +1,101 @@
+param (
+    [switch]$DryRun
+)
+
 Write-Host "Starting import path fix process..."
 
-# Get the absolute path to the dist directory
-$distPath = Join-Path $PSScriptRoot "..\dist"
-$distPath = Resolve-Path $distPath
+$distPath = Resolve-Path (Join-Path $PSScriptRoot "..\dist")
+Write-Host "Target directory: $distPath"
 
-Write-Host "Processing JavaScript files..."
+$jsFiles = Get-ChildItem -Path $distPath -Recurse -Filter "*.js"
+$htmlFiles = Get-ChildItem -Path $distPath -Recurse -Filter "*.html"
+Write-Host "Found $($jsFiles.Count) JavaScript files"
+Write-Host "Found $($htmlFiles.Count) HTML files"
 
-# Get all JS files recursively
-$files = Get-ChildItem -Path $distPath -Recurse -Filter "*.js"
-  Write-Host "Found $($files.Count) JavaScript files"
+# Patterns for JS import rewriting
+$jsPatterns = @(
+    'from "(\.\.?/[^"]+)"',
+    "from '(\.\.?/[^']+)'"
+)
 
-foreach ($file in $files) {
-    Write-Host "Processing: $($file.Name)"
-    $content = Get-Content -Path $file.FullName -Raw
-    
-    # Add .js to relative imports
-    $patterns = @(
-        'from "(\.\.?/[^"]+)"',  # double quotes
-        "from '(\.\.?/[^']+)'"   # single quotes
+# Patterns for HTML src/href rewriting
+$htmlPatterns = @(
+    '<script\s+[^>]*src="(\.\.?/[^"]+?)"',
+    '<link\s+[^>]*href="(\.\.?/[^"]+?)"'
+)
+
+function Update-ImportPath {
+    param (
+        [System.IO.FileInfo]$File,
+        [string[]]$Patterns,
+        [string]$Extension
     )
-    
+
+    Write-Host "→ Processing: $($File.Name)"
+    $content = Get-Content -Path $File.FullName -Raw
     $updatedContent = $content
-    foreach ($pattern in $patterns) {
-        $updatedContent = $updatedContent -replace $pattern, 'from "$1.js"'
-    }
 
-    # Avoid double .js extensions
-    $updatedContent = $updatedContent -replace '\.js\.js"', '.js"'
-    $updatedContent = $updatedContent -replace "\.js\.js'", ".js'"
+ foreach ($pattern in $Patterns) {
+    $regex = [regex]::new($pattern)
+    $updatedContent = $regex.Replace($updatedContent, {
+        param($match)
+        $path = $match.Groups[1].Value
+
+                # If path contains 'src', flatten to ./filename.js
+        if ($path -match 'src') {
+            $filename = [System.IO.Path]::GetFileNameWithoutExtension($path)
+            $newPath = "./$filename.js"
+            $fullMatch = $match.Value
+            $updated = $fullMatch -replace [regex]::Escape($path), $newPath
+            return $updated
+        }
+        # Otherwise, only append .js if no extension
+
+        if ($path -notmatch "\.($Extension)$") {
+            $fullMatch = $match.Value
+            $updated = $fullMatch -replace [regex]::Escape($path), "$path.$Extension"
+            return $updated
+        }
+        return $match.Value
+    })
+}
+
+
+    # Avoid double extensions
+    $updatedContent = $updatedContent -replace "\.$Extension\.$Extension", ".$Extension"
 
     if ($content -ne $updatedContent) {
-        Set-Content -Path $file.FullName -Value $updatedContent -NoNewline
-        Write-Host "✓ Updated imports in $($file.Name)" -ForegroundColor Green
-    }
-    else {
-        Write-Host "- No changes needed in $($file.Name)" -ForegroundColor Yellow
-    }
+        Write-Host "↻ Changes detected in $($File.Name)"
 
-    if ($content -ne $updatedContent) {
-        $backup = "$($file.FullName).bak"
-        Copy-Item -Path $file.FullName -Destination $backup
-        
-        try {
-            Set-Content -Path $file.FullName -Value $updatedContent -NoNewline
-            Write-Host "✓ Updated imports in $($file.Name)" -ForegroundColor Green
-            Remove-Item -Path $backup
+        if ($DryRun) {
+            Write-Host "🧪 Dry run: no changes written" -ForegroundColor Cyan
+        } else {
+            $backup = "$($File.FullName).bak"
+            Copy-Item -Path $File.FullName -Destination $backup
+
+            try {
+                Set-Content -Path $File.FullName -Value $updatedContent -NoNewline
+                Write-Host "✓ Updated $($File.Name)" -ForegroundColor Green
+                Remove-Item -Path $backup
+            }
+            catch {
+                Write-Host "✗ Failed to update $($File.Name). Restoring backup..." -ForegroundColor Red
+                Copy-Item -Path $backup -Destination $File.FullName -Force
+                Remove-Item -Path $backup
+                throw $_
+            }
         }
-        catch {
-            Write-Host "✗ Failed to update $($file.Name). Restoring backup..." -ForegroundColor Red
-            Copy-Item -Path $backup -Destination $file.FullName
-            Remove-Item -Path $backup
-            throw $_
-        }
+    } else {
+        Write-Host "- No changes needed in $($File.Name)" -ForegroundColor Yellow
     }
-    else {
-        Write-Host "- No changes needed in $($file.Name)" -ForegroundColor Yellow
-    }
+}
+
+# Process JS and HTML files
+foreach ($file in $jsFiles) {
+    Update-ImportPath -File $file -Patterns $jsPatterns -Extension "js"
+}
+foreach ($file in $htmlFiles) {
+    Update-ImportPath -File $file -Patterns $htmlPatterns -Extension "js"
 }
 
 Write-Host "`nImport path fix process completed!" -ForegroundColor Green

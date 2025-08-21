@@ -5,6 +5,32 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Service Worker: Installed');
 });
 
+// Listen for messages (e.g., from the popup) to wake/verify the service worker
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  let isAsync = false;
+
+  if (message.type === 'STORE_KEY') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'INJECT_KEY', apiKey: message.apiKey });
+      }
+    });
+  } else if (message?.type === 'GET_API_KEY') {
+    console.log('Service Worker: Received API key request');
+    chrome.storage.sync.get(['apiKey'], (result) => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ error: chrome.runtime.lastError.message });
+        return;
+      }
+      const apiKey = result.apiKey;
+      sendResponse(typeof apiKey === 'string' && apiKey.trim() ? { apiKey } : { error: 'Google Maps API key not found in storage' });
+    });
+    isAsync = true;
+  }
+
+  return isAsync;
+});
+
 chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tabInfo: chrome.tabs.Tab): void => {
   if (!tabInfo.url) return;
 

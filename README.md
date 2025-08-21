@@ -1,48 +1,112 @@
-# Places Chrome Extension
+# Places API Chrome Extension
 
-A Chrome extension that provides Google Places Autocomplete functionality for Prophet21 forms.
+A Chrome extension that integrates Google Places API with Prophet 21 windows for enhanced address functionality.
 
-## Setup
+## Features
 
-### 1. API Key Configuration
+- Google Places Autocomplete integration
+- Address validation and formatting
+- Duplicate address checking
+- Support for multiple Prophet 21 windows:
+  - Order Entry Sheet
+  - Ship To Sheet
+  - Customer Maintenance Sheet
+  - Customer Master Inquiry
+  - Purchase Order Entry Sheet
 
-1. Copy `src/config.example.ts` to `src/config.ts`
-2. Replace `'your_api_key_here'` with your actual Google Maps API key
-3. Make sure your API key has the following APIs enabled:
-   - Places API
-   - Maps JavaScript API
+## Development Setup
 
-### 2. Build the Extension
+### Prerequisites
 
-```bash
-npm run build
+- Node.js (v16 or higher)
+- npm
+
+### Installation
+
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+### Build Commands
+
+- **Development build**: `npm run build:dev`
+- **Production build**: `npm run build`
+- **Development with watch**: `npm run dev`
+- **Type checking**: `npm run type-check`
+- **Clean build**: `npm run clean`
+
+### Development Workflow
+
+1. **Start development mode**:
+
+   ```bash
+   npm run dev
+   ```
+
+   This will watch for file changes and rebuild automatically.
+
+2. **Build for production**:
+
+   ```bash
+   npm run build
+   ```
+
+3. **Load extension in Chrome**:
+   - Open Chrome and go to `chrome://extensions/`
+   - Enable "Developer mode"
+   - Click "Load unpacked" and select the `dist` folder
+
+## Project Structure
+
+```
+src/
+├── background.ts          # Service worker background script
+├── content.ts            # Content script for page injection
+├── loadMap.ts            # Google Maps API loader
+├── popup.ts              # Extension popup logic
+├── autocomplete.ts       # Places Autocomplete functionality
+├── w_*.ts               # Prophet 21 window-specific scripts
+└── utils/               # Utility functions
+    ├── duplicateCheck.ts
+    └── userSession.ts
 ```
 
-### 3. Load in Chrome
+## Build Configuration
 
-1. Open Chrome and go to `chrome://extensions/`
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select the `dist` folder from this project
+The project uses **Webpack** as the bundler with the following features:
 
-## Usage
+- **TypeScript compilation** with ts-loader
+- **Multiple entry points** for different extension components
+- **Asset copying** for static files (HTML, CSS, images)
+- **Source maps** for debugging
+- **Code optimization** for production builds
 
-The extension will automatically activate on Prophet21 pages and provide autocomplete functionality for address fields.
+### Webpack Configuration Files
 
-## Development
+- `webpack.config.js` - Base configuration
+- `webpack.dev.js` - Development-specific overrides
 
-- `npm run build` - Build the extension
-- `npm run watch` - Watch for changes and rebuild automatically
+## Deployment
 
-## Files
+1. Run `npm run build` to create production build
+2. The `dist/` folder contains all necessary files
+3. Load the extension from the `dist/` folder in Chrome
 
-- `src/config.ts` - Contains your API key (not committed to git)
-- `src/config.example.ts` - Template for API key configuration
-- `src/loadMap.ts` - Handles Google Maps API loading
-- `src/autocomplete.ts` - Main autocomplete functionality
+## Configuration
 
-## Privacy Policy
+The extension requires a Google Maps API key to be stored in Chrome's local storage. This can be configured through the extension's popup interface.
 
-This extension does not collect, store, or transmit any personal or sensitive user data. All address queries are sent directly to the Google Maps API for autocomplete functionality and are not accessed or stored by the extension. User preferences (such as API keys) are stored locally in the browser and never transmitted externally.
+## Contributing
 
-If you have any questions, contact: [your email address]
+1. Make changes to TypeScript files in the `src/` directory
+2. Run `npm run dev` for development with auto-rebuild
+3. Test changes in Chrome
+4. Run `npm run build` before committing
+
+## Troubleshooting
+
+- **Build errors**: Run `npm run type-check` to verify TypeScript compilation
+- **Extension not loading**: Check the browser console for errors
+- **API issues**: Verify Google Maps API key is properly configured

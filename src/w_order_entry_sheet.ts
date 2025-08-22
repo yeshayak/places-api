@@ -1,7 +1,5 @@
 import { AutocompleteElement, handlePlaceSelect } from './autocomplete';
 
-console.log('Loaded w_order_entry_sheet.js');
-
 // Using global AngularScope
 type CustomScope = AngularScope;
 

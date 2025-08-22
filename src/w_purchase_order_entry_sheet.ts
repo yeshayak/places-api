@@ -1,8 +1,6 @@
 /// <reference types="angular" />
 import { getUserSession } from './utils/userSession';
 
-console.log('Loaded w_purchase_order_entry_sheet');
-
 type RootScope = AngularScope & {
   windowData: {
     'TABPAGE_1.tp_1_dw_1': Array<{

@@ -1,7 +1,5 @@
 import { AutocompleteElement, handlePlaceSelect } from './autocomplete';
 
-console.log('Loaded w_customer_master_inquiry.js');
-
 type CustomerRecord = {
   customer_id: string;
   company_id: string;

@@ -29,43 +29,25 @@
     });
   };
 
-  // Get API key from background script and make it available globally
+  // Get API key from localStorage, fallback to chrome.storage.local if missing/stale
   const setupApiKey = async (): Promise<void> => {
-    try {
-      const response = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ type: 'GET_API_KEY' }, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-            return;
-          }
-          resolve(response);
-        });
-      });
-
-      // Type guard to ensure response is an object with apiKey property
-      const apiKey = response && typeof response === 'object' && 'apiKey' in response ? (response as { apiKey: string }).apiKey : undefined;
-
-      if (apiKey) {
-        // Use postMessage to send API key to page context
-        window.postMessage({ type: 'GATOR_API_KEY', apiKey: apiKey }, '*');
-
-        console.log('API key sent to page context via postMessage');
-
-        // Inject scripts in dependency order
-        try {
-          // Then inject loadMap (core functionality)
-          await injectScript(chrome.runtime.getURL('loadMap.js'), 'body');
-
-          console.log('Core scripts loaded successfully');
-        } catch (error) {
-          console.error('Error loading core scripts:', error);
+    let apiKey = localStorage.getItem('gatorPlacesApiKey');
+    if (apiKey && apiKey.trim()) {
+      window.postMessage({ type: 'GATOR_API_KEY', apiKey }, '*');
+      console.log('[Content] API key loaded from localStorage');
+    } else {
+      // Fallback: request from chrome.storage.local
+      chrome.storage.local.get(['apiKey'], (result) => {
+        if (result.apiKey && result.apiKey.trim()) {
+          localStorage.setItem('gatorPlacesApiKey', result.apiKey);
+          window.postMessage({ type: 'GATOR_API_KEY', apiKey: result.apiKey }, '*');
+          console.log('[Content] Healed localStorage from chrome.storage.local');
+        } else {
+          console.error('[Content] Failed to heal localStorage: API key not found in chrome.storage.local');
         }
-      } else {
-        console.error('Failed to get API key:', response || 'Unknown error');
-      }
-    } catch (error) {
-      console.error('Error getting API key:', error);
+      });
     }
+    // ...existing code...
   };
 
   // Setup API key and inject core scripts
@@ -80,17 +62,6 @@
     'Purchase Order Entry:': 'w_purchase_order_entry_sheet.js',
   };
 
-  // Listen for messages and inject the appropriate script
-  chrome.runtime.onMessage.addListener((request: { changeInfo: { title?: string } }) => {
-    const scriptKey = Object.keys(scriptMapping).find((key) => request.changeInfo.title?.startsWith(key));
-
-    if (scriptKey) {
-      // Inject the specific window script
-      injectScript(chrome.runtime.getURL(scriptMapping[scriptKey]), 'body')
-        .then(() => console.log(`Loaded ${scriptMapping[scriptKey]}`))
-        .catch((error) => console.error(`Failed to load ${scriptMapping[scriptKey]}:`, error));
-    }
-  });
   // Unified message handler
   chrome.runtime.onMessage.addListener((msg) => {
     // Handle INJECT_KEY

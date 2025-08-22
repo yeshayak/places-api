@@ -6,24 +6,34 @@ document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('config-form') as HTMLFormElement;
   const enableBtn = document.getElementById('enable-site-btn') as HTMLButtonElement | null;
 
-
-  // Load saved API key from localStorage
-  const storedKey = localStorage.getItem('gatorPlacesApiKey');
-  if (storedKey) apiKeyInput.value = storedKey;
-
+  // Load saved API key from chrome.storage.local (authoritative)
+  chrome.storage.local.get(['apiKey'], (result) => {
+    if (result.apiKey) {
+      apiKeyInput.value = result.apiKey;
+      // Mirror to localStorage
+      localStorage.setItem('gatorPlacesApiKey', result.apiKey);
+      console.log('[Popup] Loaded API key from chrome.storage.local and mirrored to localStorage');
+    }
+  });
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const apiKey = apiKeyInput.value.trim();
+    // Write to chrome.storage.local
+    chrome.storage.local.set({ apiKey }, () => {
+      // Mirror to localStorage
+      try {
+        localStorage.setItem('gatorPlacesApiKey', apiKey);
+        console.log('[Popup] Saved API key to chrome.storage.local and mirrored to localStorage');
+        statusDiv.textContent = 'Settings saved!';
+        setTimeout(() => (statusDiv.textContent = ''), 2000);
+      } catch (err) {
+        statusDiv.textContent = 'Error saving key.';
+        statusDiv.style.color = 'red';
+      }
+    });
+    // Optionally, send to background/content if needed
     chrome.runtime.sendMessage({ type: 'STORE_KEY', apiKey });
-    try {
-      localStorage.setItem('gatorPlacesApiKey', apiKey);
-      statusDiv.textContent = 'Settings saved!';
-      setTimeout(() => (statusDiv.textContent = ''), 2000);
-    } catch (err) {
-      statusDiv.textContent = 'Error saving key.';
-      statusDiv.style.color = 'red';
-    }
   });
 
   // Handle "Enable on this site" button click to request host permissions

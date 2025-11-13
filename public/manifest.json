@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Places",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Get address info from Google Places API",
   "permissions": ["scripting", "storage", "tabs"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
@@ -26,6 +26,7 @@
         "injectKey.js",
         "loadMap.js",
         "autocomplete.js",
+        "autocomplete2.js",
         "w_order_entry_sheet.js",
         "w_ship_to_sheet.js",
         "w_customer_maint_sheet.js",

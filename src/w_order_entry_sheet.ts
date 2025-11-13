@@ -1,4 +1,5 @@
 import { AutocompleteElement, handlePlaceSelect } from './autocomplete';
+// import { setupCustomAutocomplete } from './autocomplete2';
 
 // Using global AngularScope
 type CustomScope = AngularScope;
@@ -38,6 +39,7 @@ const initializeAutocomplete = async (): Promise<void> => {
         handlePlaceSelect(autocomplete!, '[id="shipto"]', true);
       });
     }
+    // setupCustomAutocomplete('#shipto.ship_to_name', '#shipto', true);
   }
 };
 

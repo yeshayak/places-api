@@ -17,6 +17,7 @@ interface OrderRecord {
 interface PaymentRecord {
   cf_balance: number;
   c_unapplied_dp: number;
+  c_dp_override_amt: number;
 }
 
 interface ContactRecord {
@@ -73,7 +74,7 @@ const paymentLink = async (): Promise<void> => {
       return;
     }
 
-    const balance = (paymentRecord.cf_balance - paymentRecord.c_unapplied_dp)?.toFixed(2);
+    const balance = paymentRecord.c_dp_override_amt ? paymentRecord.c_dp_override_amt?.toFixed(2) : paymentRecord.cf_balance?.toFixed(2);
     if (!balance) {
       console.error('Balance is undefined or invalid.');
       return;

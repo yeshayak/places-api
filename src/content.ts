@@ -62,6 +62,26 @@
     'Purchase Order Entry:': 'w_purchase_order_entry_sheet.js',
   };
 
+  const injectForTitle = (title: string | undefined): void => {
+    if (!title) return;
+
+    const scriptKey = Object.keys(scriptMapping).find((key) => title.startsWith(key));
+    if (!scriptKey) return;
+
+    injectScript(chrome.runtime.getURL('xhr-monitor.js'), 'body')
+      .then(() => injectScript(chrome.runtime.getURL(scriptMapping[scriptKey]), 'body'))
+      .then(() => console.log(`Loaded xhr-monitor.js and ${scriptMapping[scriptKey]}`))
+      .catch((error) => console.error(`Failed to load xhr-monitor.js or ${scriptMapping[scriptKey]}:`, error));
+  };
+
+  injectForTitle(document.title);
+
+  const titleElement = document.querySelector('title');
+  if (titleElement) {
+    const titleObserver = new MutationObserver(() => injectForTitle(document.title));
+    titleObserver.observe(titleElement, { childList: true });
+  }
+
   // Unified message handler
   chrome.runtime.onMessage.addListener((msg) => {
     // Handle INJECT_KEY
@@ -80,12 +100,7 @@
 
     // Handle dynamic script injection by title
     if (msg.changeInfo?.title) {
-      const scriptKey = Object.keys(scriptMapping).find((key) => msg.changeInfo?.title.startsWith(key));
-      if (scriptKey) {
-        injectScript(chrome.runtime.getURL(scriptMapping[scriptKey]), 'body')
-          .then(() => console.log(`Loaded ${scriptMapping[scriptKey]}`))
-          .catch((error) => console.error(`Failed to load ${scriptMapping[scriptKey]}:`, error));
-      }
+      injectForTitle(msg.changeInfo.title);
     }
   });
 })();

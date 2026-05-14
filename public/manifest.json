@@ -32,6 +32,9 @@
         "w_customer_maint_sheet.js",
         "w_customer_master_inquiry.js",
         "w_purchase_order_entry_sheet.js",
+        "xhr-monitor.js",
+        "request-parser.js",
+        "p21-session.js",
         "utils/userSession.js",
         "utils/duplicateCheck.js"
       ],

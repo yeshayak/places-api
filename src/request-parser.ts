@@ -1,4 +1,4 @@
-import { extractP21Session, P21SessionSnapshot } from './p21-session';
+import { extractP21Session, type P21SessionSnapshot } from './p21-session';
 
 export type P21EndpointKind = 'data' | 'grid-state' | 'transaction' | 'ui-full' | 'unknown';
 
@@ -139,7 +139,10 @@ const summarizePayload = (value: unknown): P21PayloadSummary | undefined => {
     dataKeys: data ? Object.keys(data) : undefined,
     dataInformationKeys: dataInformation ? Object.keys(dataInformation) : undefined,
     eventCount: events?.length,
-    eventNames: events?.map(extractEventName).filter((name): name is string => Boolean(name)).slice(0, 20),
+    eventNames: events
+      ?.map(extractEventName)
+      .filter((name): name is string => Boolean(name))
+      .slice(0, 20),
     propertyKeys: properties ? Object.keys(properties) : undefined,
     resultKeys: result ? Object.keys(result) : undefined,
     tpItemsCount: tpItems?.length,
@@ -164,8 +167,7 @@ const extractEventName = (event: unknown): string | undefined => {
 
 const getRecord = (value: unknown): Record<string, unknown> | undefined => (isRecord(value) ? value : undefined);
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   if (!isRecord(value)) return false;

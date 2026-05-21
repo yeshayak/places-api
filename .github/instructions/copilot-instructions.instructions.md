@@ -34,8 +34,8 @@ Coding standards, domain knowledge, and preferences that AI should follow.
 
 ## Preferences
 
-- Use `lodash` for utility functions.
-- Use `axios` for HTTP requests.
+- Prefer native XMLHttpRequest and fetch APIs when interacting with browser page context.
+- Avoid axios inside injected page scripts unless necessary.
 - Use `jest` for unit testing.
 - Use `ts-jest` for TypeScript support in Jest.
 - Use `eslint` for linting.

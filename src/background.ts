@@ -5,27 +5,13 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Service Worker: Installed');
 });
 
-const p21WindowPaths = [
-  '/window/w_order_entry_sheet',
-  '/window/w_ship_to_sheet',
-  '/window/w_customer_maint_sheet',
-  '/window/w_customer_master_inquiry',
-  '/window/w_ship_sheet',
-  '/window/w_purchase_order_entry_sheet',
-];
+const p21WindowPaths = ['/window/w_order_entry_sheet', '/window/w_ship_to_sheet', '/window/w_customer_maint_sheet', '/window/w_customer_master_inquiry', '/window/w_ship_sheet', '/window/w_purchase_order_entry_sheet'];
 
-const p21WindowTitles = [
-  'Order Entry:',
-  'Ship To Maintenance:',
-  'Customer Maintenance:',
-  'Customer Master Inquiry:',
-  'Purchase Order Entry:',
-];
+const p21WindowTitles = ['Order Entry:', 'Ship To Maintenance:', 'Customer Maintenance:', 'Customer Master Inquiry:', 'Purchase Order Entry:'];
 
 const isP21WindowUrl = (url: string | undefined): boolean => Boolean(url && p21WindowPaths.some((path) => url.includes(path)));
 
-const isP21WindowTitle = (title: string | undefined): boolean =>
-  Boolean(title && title !== 'Prophet 21' && p21WindowTitles.some((prefix) => title.startsWith(prefix)));
+const isP21WindowTitle = (title: string | undefined): boolean => Boolean(title && title !== 'Prophet 21' && p21WindowTitles.some((prefix) => title.startsWith(prefix)));
 
 const sendTabMessage = (tabId: number, message: unknown): void => {
   chrome.tabs.sendMessage(tabId, message, () => {
@@ -80,16 +66,16 @@ const ensureContentScript = (tabId: number, url: string, onReady?: () => void): 
               }
 
               onReady?.();
-            }
+            },
           );
-        }
+        },
       );
     });
   });
 };
 
 // Listen for messages (e.g., from the popup) to wake/verify the service worker
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   let isAsync = false;
 
   if (message.type === 'STORE_KEY') {

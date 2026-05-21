@@ -68,10 +68,14 @@
     const scriptKey = Object.keys(scriptMapping).find((key) => title.startsWith(key));
     if (!scriptKey) return;
 
-    injectScript(chrome.runtime.getURL('xhr-monitor.js'), 'body')
-      .then(() => injectScript(chrome.runtime.getURL(scriptMapping[scriptKey]), 'body'))
-      .then(() => console.log(`Loaded xhr-monitor.js and ${scriptMapping[scriptKey]}`))
-      .catch((error) => console.error(`Failed to load xhr-monitor.js or ${scriptMapping[scriptKey]}:`, error));
+    const scripts = ['xhr-monitor.js', 'action-monitor.js', scriptMapping[scriptKey]];
+
+    scripts
+      .reduce((chain, script) => {
+        return chain.then(() => injectScript(chrome.runtime.getURL(script), 'body'));
+      }, Promise.resolve())
+      .then(() => console.log(`[P21 EXT] Context scripts loaded for: ${scriptKey}`))
+      .catch((error) => console.error(`[P21 EXT] Injection failed:`, error));
   };
 
   injectForTitle(document.title);

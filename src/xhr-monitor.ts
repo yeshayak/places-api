@@ -1,4 +1,7 @@
-import { parseP21Payload, parseP21Request, ParsedP21Payload } from './request-parser';
+import { evaluateAutomationRules } from './automation-rules';
+import { isFollowUpXhr, subscribeFollowUpResult } from './follow-up-requests';
+import { parseP21Payload, parseP21Request, type ParsedP21Payload } from './request-parser';
+import type { P21SessionSnapshot } from './p21-session';
 
 interface XhrWatcherOptions {
   debug?: boolean;
@@ -9,12 +12,24 @@ interface XhrContext {
   method: string;
   url: string;
   async?: boolean;
+  requestHeaders: Record<string, string>;
   requestBody?: unknown;
+  isFollowUp?: boolean;
   shouldLog?: boolean;
 }
 
 interface WatcherWindow extends Window {
   __p21XhrWatcherInstalled?: boolean;
+}
+
+interface P21XhrResponseEventDetail {
+  requestId: number;
+  method: string;
+  url: string;
+  endpointKind: string;
+  requestValue?: unknown;
+  responseValue?: unknown;
+  session?: P21SessionSnapshot;
 }
 
 const LOG_PREFIX = '[P21 EXT]';
@@ -35,21 +50,26 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
   const nativeSend = XMLHttpRequest.prototype.send;
   const contexts = new WeakMap<XMLHttpRequest, XhrContext>();
 
-  XMLHttpRequest.prototype.open = function patchedOpen(
-    method: string,
-    url: string | URL,
-    async?: boolean,
-    username?: string | null,
-    password?: string | null
-  ): void {
+  XMLHttpRequest.prototype.open = function patchedOpen(method: string, url: string | URL, async?: boolean, username?: string | null, password?: string | null): void {
     contexts.set(this, {
       requestId: nextRequestId++,
       method,
       url: String(url),
       async,
+      requestHeaders: {},
     });
 
     return nativeOpen.call(this, method, url, async ?? true, username ?? null, password ?? null);
+  };
+
+  const nativeSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+  XMLHttpRequest.prototype.setRequestHeader = function patchedSetRequestHeader(name: string, value: string): void {
+    const context = contexts.get(this);
+    if (context) {
+      context.requestHeaders[name] = value;
+    }
+
+    return nativeSetRequestHeader.call(this, name, value);
   };
 
   XMLHttpRequest.prototype.send = function patchedSend(body?: Document | XMLHttpRequestBodyInit | null): void {
@@ -57,6 +77,7 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
 
     if (context) {
       context.requestBody = body;
+      context.isFollowUp = isFollowUpXhr(this);
 
       const parsedRequest = parseP21Request({
         method: context.method,
@@ -72,6 +93,7 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
         url: parsedRequest.normalizedUrl,
         endpointKind: parsedRequest.endpointKind,
         session: parsedRequest.session,
+        headers: context.requestHeaders,
         requestSummary: parsedRequest.requestSummary.summary,
         responseSummary: undefined,
         parseErrors: collectParseErrors(parsedRequest.requestSummary),
@@ -84,6 +106,31 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
           url: context.url,
           body: bodyToLoggableValue(context.requestBody),
         });
+        const automationEvents = context.isFollowUp
+          ? []
+          : evaluateAutomationRules({
+              requestId: context.requestId,
+              method: context.method,
+              request: latestRequest,
+              response: responseSummary,
+              sourceRequest: {
+                method: context.method,
+                url: context.url,
+                body: bodyToLoggableValue(context.requestBody),
+                headers: { ...context.requestHeaders },
+                parsedRequest: latestRequest,
+              },
+            });
+
+        dispatchXhrResponseEvent({
+          requestId: context.requestId,
+          method: context.method,
+          url: latestRequest.normalizedUrl,
+          endpointKind: latestRequest.endpointKind,
+          requestValue: latestRequest.requestSummary.value,
+          responseValue: responseSummary.value,
+          session: latestRequest.session,
+        });
 
         logIfEnabled(options, context.shouldLog === true, {
           type: 'xhr-response',
@@ -92,10 +139,25 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
           url: latestRequest.normalizedUrl,
           endpointKind: latestRequest.endpointKind,
           session: latestRequest.session,
+          headers: context.requestHeaders,
+          isFollowUp: context.isFollowUp,
           requestSummary: latestRequest.requestSummary.summary,
           responseSummary: responseSummary.summary,
+          automationEvents,
           parseErrors: [...collectParseErrors(latestRequest.requestSummary), ...collectParseErrors(responseSummary)],
         });
+
+        for (const automationEvent of automationEvents) {
+          logIfEnabled(options, true, {
+            type: 'automation-match',
+            event: automationEvent.type,
+            ruleId: automationEvent.ruleId,
+            requestId: automationEvent.requestId,
+            url: automationEvent.url,
+            session: automationEvent.session,
+            evidence: automationEvent.evidence,
+          });
+        }
       });
     }
 
@@ -114,6 +176,26 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
     parseErrors: [],
   });
 };
+
+const dispatchXhrResponseEvent = (detail: P21XhrResponseEventDetail): void => {
+  window.dispatchEvent(
+    new CustomEvent<P21XhrResponseEventDetail>('p21-ext:xhr-response', {
+      detail,
+    }),
+  );
+};
+
+subscribeFollowUpResult((result) => {
+  logIfEnabled({}, true, {
+    type: 'follow-up-result',
+    correlationId: result.correlationId,
+    templateId: result.templateId,
+    reason: result.reason,
+    ok: result.ok,
+    url: result.url,
+    error: result.error,
+  });
+});
 
 const parseResponse = (xhr: XMLHttpRequest): ParsedP21Payload => {
   if (xhr.responseType && xhr.responseType !== 'text' && xhr.responseType !== 'json') {

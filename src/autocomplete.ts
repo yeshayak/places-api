@@ -3,20 +3,13 @@
 
 import { duplicateCheck } from './utils/duplicateCheck';
 import { loadGoogleMaps } from './loadMap';
+import { putAddressUpdates, type P21AddressUpdateValue } from './p21-data-endpoint';
 
-interface CustomScope extends ng.IScope {
-  record: Record<string, string>;
-  onChange(): Promise<void>;
-}
-
-interface AddressComponent {
-  long_name: string;
-  short_name: string;
-  types: string[];
-}
+const autocompleteInstances = new WeakMap<HTMLInputElement, google.maps.places.Autocomplete>();
+let isProcessingSelection = false;
 
 /**
- * Initialize Google Places Autocomplete with the new Places API
+ * Initialize Google Places Autocomplete using the legacy Autocomplete API.
  * @param inputSelector - The CSS selector for the input element
  * @returns Promise resolving to the Autocomplete instance or null
  */
@@ -25,11 +18,16 @@ export const AutocompleteElement = async (inputSelector: string): Promise<google
     // Wait for Google Maps API to be loaded
     await loadGoogleMaps();
 
-    const autocompleteInput = document.querySelector<HTMLInputElement>(inputSelector);
-
+    const autocompleteInput = await waitForElement<HTMLInputElement>(inputSelector, 1000);
     if (!autocompleteInput) {
       console.error(`Input element not found for selector: ${inputSelector}`);
       return null;
+    }
+
+    const existingAutocomplete = autocompleteInstances.get(autocompleteInput);
+    if (existingAutocomplete) {
+      console.log(`Autocomplete instance already exists for input: ${inputSelector}`);
+      return existingAutocomplete;
     }
 
     const autocomplete = new google.maps.places.Autocomplete(autocompleteInput, {
@@ -37,17 +35,9 @@ export const AutocompleteElement = async (inputSelector: string): Promise<google
       fields: ['address_components', 'formatted_address', 'name', 'geometry.location', 'place_id'],
     });
 
-    // Prevent form submission on enter
-    autocompleteInput.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-      }
-    });
-
-    // Disable browser's autofill
-    autocompleteInput.setAttribute('autocomplete', 'new-password');
-
-    console.log(`Autocomplete initialized for input: ${inputSelector}`);
+    // Store the instance
+    autocompleteInstances.set(autocompleteInput, autocomplete);
+    console.log(`[P21 EXT] Autocomplete initialized for: ${inputSelector}`);
     return autocomplete;
   } catch (error) {
     console.error('Error initializing Places Autocomplete:', error);
@@ -55,26 +45,62 @@ export const AutocompleteElement = async (inputSelector: string): Promise<google
   }
 };
 
+const waitForElement = <T extends Element>(selector: string, timeoutMs: number): Promise<T | null> => {
+  const existingElement = findUsableElement<T>(selector);
+  if (existingElement) {
+    return Promise.resolve(existingElement);
+  }
+
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(() => {
+      observer.disconnect();
+      resolve(findUsableElement<T>(selector));
+    }, timeoutMs);
+
+    const observer = new MutationObserver(() => {
+      const element = findUsableElement<T>(selector);
+      if (!element) return;
+
+      window.clearTimeout(timeout);
+      observer.disconnect();
+      resolve(element);
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+};
+
+const findUsableElement = <T extends Element>(selector: string): T | null => {
+  const elements = document.querySelectorAll<T>(selector);
+  return Array.from(elements).find(isUsableElement) ?? null;
+};
+
+const isUsableElement = (element: Element): boolean => {
+  if (element instanceof HTMLInputElement && element.disabled) return false;
+  return element.isConnected && element.getClientRects().length > 0;
+};
+
 /**
- * Handle place selection from the Autocomplete widget
+ * Handle place selection from the legacy Autocomplete widget
  * @param autocomplete - The Autocomplete instance
  * @param addressFields - The selector for address fields container
  * @param includeName - Whether to include the place name
  */
 export const handlePlaceSelect = async (autocomplete: google.maps.places.Autocomplete, addressFields: string, includeName: boolean): Promise<void> => {
-  if (!autocomplete) {
+  if (!autocomplete || isProcessingSelection) {
     console.error('Autocomplete is not initialized.');
     return;
   }
 
   try {
+    isProcessingSelection = true;
     const addressObject = await autocomplete.getPlace();
     if (!addressObject || !addressObject.address_components) {
       console.error('Invalid place selection.');
       return;
     }
 
-    const place: Place = {
+    const place: P21AddressUpdateValue = {
       name: addressObject.name ?? '',
       address1: '',
       address2: '',
@@ -83,8 +109,7 @@ export const handlePlaceSelect = async (autocomplete: google.maps.places.Autocom
       postal_code: '',
     };
 
-    // Extract address components using the new API format
-    addressObject.address_components.forEach((component: AddressComponent) => {
+    addressObject.address_components.forEach((component: google.maps.GeocoderAddressComponent) => {
       const value = component.short_name;
 
       switch (true) {
@@ -112,34 +137,10 @@ export const handlePlaceSelect = async (autocomplete: google.maps.places.Autocom
 
     console.log('Selected Place:', place);
 
-    // Update Angular fields
-    for (const [component, value] of Object.entries(place)) {
-      if (component === 'name' && !includeName) continue;
-
-      const fieldElement = document.querySelector(addressFields)?.querySelector(`[id$=${component}]:not([disabled])`);
-      if (!fieldElement) {
-        console.warn(`Field for component "${component}" not found.`);
-        continue;
-      }
-
-      const fieldName = fieldElement.id.split('.')[1];
-      const angularScope = angular.element(fieldElement).scope() as CustomScope;
-
-      try {
-        await new Promise<void>((resolve) => {
-          angularScope.$apply(() => {
-            if (angularScope.record) {
-              angularScope.record[fieldName] = value;
-              console.log(`Updated field "${fieldName}" with value:`, value);
-            }
-            resolve();
-          });
-        });
-
-        await angularScope.onChange();
-      } catch (error) {
-        console.error(`Error updating field "${fieldName}":`, error);
-      }
+    const updateResult = await putAddressUpdates(addressFields, place, includeName);
+    if (!updateResult.ok) {
+      console.error('P21 data endpoint address update failed:', updateResult);
+      return;
     }
 
     // Check for duplicates if address1 is updated
@@ -148,5 +149,7 @@ export const handlePlaceSelect = async (autocomplete: google.maps.places.Autocom
     }
   } catch (error) {
     console.error('Error handling place selection:', error);
+  } finally {
+    isProcessingSelection = false;
   }
 };

@@ -3,8 +3,7 @@
     "target": "es2022",
     "module": "ES2022",
     "types": ["chrome"],
-    "moduleResolution": "Node",
-    "baseUrl": "./src",
+    "moduleResolution": "bundler",
     "outDir": "./dist",
     "rootDir": "./src",
     "esModuleInterop": true,
@@ -13,10 +12,16 @@
     "allowJs": false,
     "noEmitOnError": false,
     "strict": true,
+    "isolatedModules": true,
+    "useDefineForClassFields": true,
+    "verbatimModuleSyntax": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
     "allowUmdGlobalAccess": true,
     "typeRoots": ["./node_modules/@types", "./types"],
     "paths": {
-      "*": ["src/*", "types/*"]
+      "*": ["./src/*", "./types/*"]
     }
   },
   "include": ["src/**/*.ts", "types/**/*.ts"],

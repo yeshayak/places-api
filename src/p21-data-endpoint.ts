@@ -31,7 +31,7 @@ interface P21ActiveContext {
 interface P21DataEndpointWindow extends Window {
   __p21DataEndpoint?: {
     buildAddressUpdates: typeof buildAddressUpdates;
-    putFieldUpdates: typeof putFieldUpdates;
+    triggerFieldUpdates: typeof triggerFieldUpdates;
     trackActiveContext: typeof trackActiveContext;
   };
 }
@@ -43,6 +43,9 @@ const state = {
 };
 
 const LOG_PREFIX = '[P21 EXT]';
+const isDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebug') === 'true';
+const isFullDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebugFull') === 'true';
+
 const ADDRESS_COMPONENT_FIELD_CANDIDATES: Record<keyof P21AddressUpdateValue, string[]> = {
   name: ['ship_to_name', 'address_name', 'customer_name', 'name'],
   address1: ['phys_address1', 'mail_address1', 'address1'],
@@ -197,12 +200,12 @@ export const buildAddressUpdates = (containerSelector: string, place: P21Address
     .filter((update): update is P21FieldUpdate => Boolean(update.dwName));
 };
 
-export const putAddressUpdates = async (containerSelector: string, place: P21AddressUpdateValue, includeName: boolean): Promise<P21DataEndpointUpdateResult> => {
+export const updateAddressFields = async (containerSelector: string, place: P21AddressUpdateValue, includeName: boolean): Promise<P21DataEndpointUpdateResult> => {
   const fields = buildAddressUpdates(containerSelector, place, includeName);
-  return putFieldUpdates(fields, containerSelector);
+  return triggerFieldUpdates(fields, containerSelector);
 };
 
-export const putFieldUpdates = async (fields: P21FieldUpdate[], containerSelector?: string): Promise<P21DataEndpointUpdateResult> => {
+export const triggerFieldUpdates = async (fields: P21FieldUpdate[], containerSelector?: string): Promise<P21DataEndpointUpdateResult> => {
   if (fields.length === 0) {
     return {
       ok: false,
@@ -212,7 +215,9 @@ export const putFieldUpdates = async (fields: P21FieldUpdate[], containerSelecto
     };
   }
 
-  console.log(LOG_PREFIX, `Performing DOM update for ${fields.length} fields.`, fields);
+  if (isDebugEnabled() || isFullDebugEnabled()) {
+    console.log(LOG_PREFIX, `Performing DOM update for ${fields.length} fields.`, fields);
+  }
 
   for (let i = 0; i < fields.length; i++) {
     const field = fields[i];
@@ -222,7 +227,9 @@ export const putFieldUpdates = async (fields: P21FieldUpdate[], containerSelecto
     const element = containerSelector ? document.querySelector(containerSelector)?.querySelector(fieldSelector) : document.querySelector(fieldSelector);
 
     if (element instanceof HTMLElement && !(element as any).disabled && !(element as any).readOnly) {
-      console.log(LOG_PREFIX, `[${i + 1}/${fields.length}] Triggering sequence for: ${field.fieldName} -> ${field.value}`);
+      if (isDebugEnabled() || isFullDebugEnabled()) {
+        console.log(LOG_PREFIX, `[${i + 1}/${fields.length}] Triggering sequence for: ${field.fieldName} -> ${field.value}`);
+      }
 
       const jQuery = (window as any).jQuery;
       if (jQuery) {
@@ -282,7 +289,9 @@ const triggerAngularRefresh = (): void => {
     const rootScope = scope?.$root;
 
     if (rootScope) {
-      console.log(LOG_PREFIX, 'Triggering UI synchronization.');
+      if (isDebugEnabled() || isFullDebugEnabled()) {
+        console.log(LOG_PREFIX, 'Triggering UI synchronization.');
+      }
 
       // Safe apply: Check if digest is already in progress
       const phase = rootScope.$$phase;
@@ -297,7 +306,7 @@ const triggerAngularRefresh = (): void => {
 
 dataEndpointWindow.__p21DataEndpoint = {
   buildAddressUpdates,
-  putFieldUpdates,
+  triggerFieldUpdates,
   trackActiveContext,
 };
 

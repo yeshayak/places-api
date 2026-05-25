@@ -1,7 +1,6 @@
 import { evaluateAutomationRules } from './automation-rules';
 import { isFollowUpXhr, subscribeFollowUpResult } from './follow-up-requests';
 import { parseP21Payload, parseP21Request, type ParsedP21Payload } from './request-parser';
-import type { P21SessionSnapshot } from './p21-session';
 
 interface XhrWatcherOptions {
   debug?: boolean;
@@ -29,12 +28,11 @@ interface P21XhrResponseEventDetail {
   endpointKind: string;
   requestValue?: unknown;
   responseValue?: unknown;
-  session?: P21SessionSnapshot;
 }
 
 const LOG_PREFIX = '[P21 EXT]';
-const DEBUG_STORAGE_KEY = 'p21ExtDebug';
-const LOG_ALL_XHR_STORAGE_KEY = 'p21ExtLogAllXhr';
+const DEBUG_KEY = 'p21ExtDebug';
+const DEBUG_FULL_KEY = 'p21ExtDebugFull';
 const watcherWindow = window as WatcherWindow;
 
 let nextRequestId = 1;
@@ -86,13 +84,12 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
       });
       context.shouldLog = shouldLogRequest(options, parsedRequest.endpointKind);
 
-      logIfEnabled(options, context.shouldLog, {
+      logIfEnabled(context.shouldLog, {
         type: 'xhr-request',
         requestId: context.requestId,
         method: context.method,
         url: parsedRequest.normalizedUrl,
         endpointKind: parsedRequest.endpointKind,
-        session: parsedRequest.session,
         headers: context.requestHeaders,
         requestSummary: parsedRequest.requestSummary.summary,
         responseSummary: undefined,
@@ -129,16 +126,14 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
           endpointKind: latestRequest.endpointKind,
           requestValue: latestRequest.requestSummary.value,
           responseValue: responseSummary.value,
-          session: latestRequest.session,
         });
 
-        logIfEnabled(options, context.shouldLog === true, {
+        logIfEnabled(context.shouldLog === true, {
           type: 'xhr-response',
           requestId: context.requestId,
           method: context.method,
           url: latestRequest.normalizedUrl,
           endpointKind: latestRequest.endpointKind,
-          session: latestRequest.session,
           headers: context.requestHeaders,
           isFollowUp: context.isFollowUp,
           requestSummary: latestRequest.requestSummary.summary,
@@ -148,13 +143,12 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
         });
 
         for (const automationEvent of automationEvents) {
-          logIfEnabled(options, true, {
+          logRelevant({
             type: 'automation-match',
             event: automationEvent.type,
             ruleId: automationEvent.ruleId,
             requestId: automationEvent.requestId,
             url: automationEvent.url,
-            session: automationEvent.session,
             evidence: automationEvent.evidence,
           });
         }
@@ -164,7 +158,7 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
     return nativeSend.call(this, body ?? null);
   };
 
-  logIfEnabled(options, true, {
+  logIfEnabled(true, {
     type: 'xhr-watcher-installed',
     requestId: undefined,
     method: undefined,
@@ -186,7 +180,7 @@ const dispatchXhrResponseEvent = (detail: P21XhrResponseEventDetail): void => {
 };
 
 subscribeFollowUpResult((result) => {
-  logIfEnabled({}, true, {
+  logRelevant({
     type: 'follow-up-result',
     correlationId: result.correlationId,
     templateId: result.templateId,
@@ -246,28 +240,25 @@ const bodyToLoggableValue = (body: unknown): unknown => {
 
 const collectParseErrors = (payload: ParsedP21Payload): string[] => (payload.error ? [payload.error] : []);
 
-const isDebugEnabled = (options: XhrWatcherOptions): boolean => {
-  if (options.debug !== undefined) {
-    return options.debug;
-  }
-
-  return localStorage.getItem(DEBUG_STORAGE_KEY) === 'true';
-};
+const isDebugEnabled = (): boolean => localStorage.getItem(DEBUG_KEY) === 'true';
+const isFullDebugEnabled = (): boolean => localStorage.getItem(DEBUG_FULL_KEY) === 'true';
 
 const shouldLogRequest = (options: XhrWatcherOptions, endpointKind: string): boolean => {
-  if (!isDebugEnabled(options)) {
-    return false;
-  }
-
-  return endpointKind !== 'unknown' || localStorage.getItem(LOG_ALL_XHR_STORAGE_KEY) === 'true';
+  return isFullDebugEnabled() && (endpointKind !== 'unknown' || options.debug === true);
 };
 
-const logIfEnabled = (options: XhrWatcherOptions, shouldLog: boolean, event: Record<string, unknown>): void => {
-  if (!shouldLog || !isDebugEnabled(options)) {
+const logIfEnabled = (shouldLog: boolean, event: Record<string, unknown>): void => {
+  if (!shouldLog || !isFullDebugEnabled()) {
     return;
   }
 
   console.log(LOG_PREFIX, event);
+};
+
+const logRelevant = (event: Record<string, unknown>): void => {
+  if (isDebugEnabled() || isFullDebugEnabled()) {
+    console.log(LOG_PREFIX, event);
+  }
 };
 
 installXhrWatcher();

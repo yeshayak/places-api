@@ -1,3 +1,5 @@
+import type { P21DesignResponse, P21EventData } from './p21-session';
+
 /**
  * Action Monitor: Intercepts DOM and AngularJS events to map P21 lifecycles.
  */
@@ -16,7 +18,7 @@ const monitorWindow = window as unknown as ActionMonitorWindow;
 const LOG_PREFIX = '[P21 ACTION]';
 
 interface P21ActionEvent {
-  source: 'DOM' | 'Angular';
+  source: 'DOM' | 'Angular' | 'Server';
   name: string;
   target?: string;
   data?: unknown;
@@ -28,7 +30,20 @@ interface P21ActionEvent {
  * Enforces the P21ActionEvent interface and handles output formatting.
  */
 const logAction = (event: P21ActionEvent): void => {
-  console.log(`${LOG_PREFIX} [${event.source}] ${event.name}`, event);
+  // Action Monitor captures system-wide activity (observations).
+  // To keep "Relevant" logs focused on Extension actions, we move these to "Full".
+  const shouldLog = localStorage.getItem('p21ExtDebugFull') === 'true';
+
+  if (shouldLog) {
+    console.log(`${LOG_PREFIX} [${event.source}] ${event.name}`, event);
+  }
+
+  // Dispatch a custom event for other modules (like automation-rules) to consume
+  window.dispatchEvent(
+    new CustomEvent('p21-ext:action-monitor-event', {
+      detail: event,
+    }),
+  );
 };
 
 /**
@@ -122,28 +137,46 @@ const patchAngularEvents = () => {
     const $rootScope = ng.element(rootElement).scope()?.$root;
     if (!$rootScope) return false;
 
+    // Prevent double-patching if the script is re-injected
+    if (($rootScope as any).__p21Patched) return true;
+    ($rootScope as any).__p21Patched = true;
+
     const originalBroadcast = $rootScope.$broadcast;
     const originalEmit = $rootScope.$emit;
 
-    $rootScope.$broadcast = function (name: string, ...args: any[]) {
+    $rootScope.$broadcast = function patchedBroadcast(name: string, ...args: any[]) {
+      const scope = this as any;
       logAction({
         source: 'Angular',
         name: `$broadcast:${name}`,
+        target: scope.$id ? `Scope(${scope.$id})` : 'RootScope',
         data: args,
         timestamp: Date.now(),
       });
-      return originalBroadcast.apply(this, [name, ...args]);
+      return originalBroadcast.apply(scope, [name, ...args]);
     };
 
-    $rootScope.$emit = function (name: string, ...args: any[]) {
+    $rootScope.$emit = function patchedEmit(name: string, ...args: any[]) {
+      const scope = this as any;
       logAction({
         source: 'Angular',
         name: `$emit:${name}`,
+        target: scope.$id ? `Scope(${scope.$id})` : 'RootScope',
         data: args,
         timestamp: Date.now(),
       });
-      return originalEmit.apply(this, [name, ...args]);
+      return originalEmit.apply(scope, [name, ...args]);
     };
+
+    // Monitor internal navigation which often signifies record or tab changes
+    $rootScope.$on('$locationChangeSuccess', (_ev: any, newUrl: string, oldUrl: string) => {
+      logAction({
+        source: 'Angular',
+        name: 'Navigation',
+        data: { newUrl, oldUrl },
+        timestamp: Date.now(),
+      });
+    });
 
     console.log(LOG_PREFIX, 'Angular event interception active.');
     return true;
@@ -153,6 +186,33 @@ const patchAngularEvents = () => {
   const interval = setInterval(() => {
     if (tryHook()) clearInterval(interval);
   }, 500);
+};
+
+/**
+ * Monitors P21 server-side events that arrive in XHR response payloads.
+ */
+const setupResponseObservation = () => {
+  window.addEventListener('p21-ext:xhr-response', (event: any) => {
+    const detail = event.detail;
+    const response = detail.responseValue as P21DesignResponse;
+
+    if (!response || !Array.isArray(response.Events)) return;
+
+    response.Events.forEach((p21Event) => {
+      const data = (p21Event.EventData || {}) as P21EventData;
+
+      // Extract target hierarchy from the event data for better context (e.g. "Order Entry > Ship To > Address1")
+      const targetParts = [data.window_classname, data.tabpagename, data.datawindowname, data.dwproperty_column].filter(Boolean);
+
+      logAction({
+        source: 'Server',
+        name: p21Event.Name || 'UnknownEvent',
+        target: targetParts.length > 0 ? targetParts.join(' > ') : p21Event.Publisher,
+        data: p21Event,
+        timestamp: Date.now(),
+      });
+    });
+  });
 };
 
 /**
@@ -252,6 +312,7 @@ if (!monitorWindow.__p21ActionMonitorInstalled) {
   monitorWindow.__p21ActionMonitorInstalled = true;
   setupDomObservation();
   patchAngularEvents();
+  setupResponseObservation();
 
   monitorWindow.__p21ActionMonitor = {
     fire: fireP21Action,

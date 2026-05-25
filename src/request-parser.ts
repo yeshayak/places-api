@@ -1,5 +1,3 @@
-import { extractP21Session, type P21SessionSnapshot } from './p21-session';
-
 export type P21EndpointKind = 'data' | 'grid-state' | 'transaction' | 'ui-full' | 'unknown';
 
 export interface ParsedP21Request {
@@ -7,7 +5,6 @@ export interface ParsedP21Request {
   path: string;
   query: Record<string, string>;
   endpointKind: P21EndpointKind;
-  session: P21SessionSnapshot;
   requestSummary: ParsedP21Payload;
 }
 
@@ -46,7 +43,6 @@ export const parseP21Request = (input: ParseP21RequestInput): ParsedP21Request =
     path: parsedUrl.path,
     query: parsedUrl.query,
     endpointKind: classifyEndpoint(parsedUrl.path),
-    session: extractP21Session(input.url, input.body),
     requestSummary,
   };
 };

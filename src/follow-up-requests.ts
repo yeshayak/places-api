@@ -1,5 +1,4 @@
 import { type P21AutomationEvent, subscribeAutomationEvent } from './automation-rules';
-import type { P21SessionSnapshot } from './p21-session';
 import type { ParsedP21Request } from './request-parser';
 
 export type FollowUpReason = 'pricing-recalculation' | 'related-item-update' | 'populate-defaults' | 'autocomplete-address-update' | 'custom';
@@ -19,7 +18,6 @@ export interface FollowUpRequestTemplate {
   url?: string;
   body?: unknown;
   headers?: Record<string, string>;
-  session?: P21SessionSnapshot;
   correlateTo?: string;
 }
 
@@ -95,10 +93,6 @@ export const buildTemplateFromSource = (
     ...source.headers,
     ...overrides.headers,
   },
-  session: {
-    ...source.parsedRequest?.session,
-    ...overrides.session,
-  },
 });
 
 export const sendFollowUpRequest = (template: FollowUpRequestTemplate, source?: FollowUpSourceRequest): Promise<FollowUpRequestResult> => {
@@ -120,8 +114,8 @@ export const sendFollowUpRequest = (template: FollowUpRequestTemplate, source?: 
     return Promise.resolve(createFailure(template, method, sourceUrl, correlationId, 'Duplicate follow-up correlation skipped.'));
   }
 
-  const url = applySessionToUrl(sourceUrl, template.session ?? source?.parsedRequest?.session);
-  const body = applySessionToBody(template.body ?? clonePayload(source?.body), template.session ?? source?.parsedRequest?.session);
+  const url = sourceUrl;
+  const body = template.body ?? clonePayload(source?.body);
   const headers = compactHeaders({
     ...source?.headers,
     ...template.headers,
@@ -190,10 +184,6 @@ subscribeAutomationEvent((event) => {
         {
           ...template,
           correlateTo: template.correlateTo ?? `${event.requestId}:${event.ruleId}:${template.id}`,
-          session: {
-            ...event.session,
-            ...template.session,
-          },
         },
         event.sourceRequest,
       );
@@ -208,66 +198,6 @@ followUpWindow.__p21FollowUpRequests = {
   registerPlanner: registerFollowUpPlanner,
   send: sendFollowUpRequest,
   subscribe: subscribeFollowUpResult,
-};
-
-const applySessionToUrl = (url: string, session: P21SessionSnapshot | undefined): string => {
-  try {
-    const parsed = new URL(url, window.location.href);
-
-    setSearchParam(parsed, 'wid', session?.wid);
-    setSearchParam(parsed, 'shellid', session?.shellid);
-    setSearchParam(parsed, 'dw', session?.dw);
-    setSearchParam(parsed, 'fn', session?.fn);
-
-    return parsed.toString();
-  } catch {
-    return url;
-  }
-};
-
-const setSearchParam = (url: URL, key: string, value: string | undefined): void => {
-  if (value) {
-    url.searchParams.set(key, value);
-  }
-};
-
-const applySessionToBody = (body: unknown, session: P21SessionSnapshot | undefined): unknown => {
-  if (!session || body === undefined || body === null || typeof body === 'string') {
-    return body;
-  }
-
-  const cloned = clonePayload(body);
-  refreshSessionFields(cloned, session);
-  return cloned;
-};
-
-const refreshSessionFields = (value: unknown, session: P21SessionSnapshot): void => {
-  if (Array.isArray(value)) {
-    value.forEach((child) => refreshSessionFields(child, session));
-    return;
-  }
-
-  if (!isRecord(value)) return;
-
-  setRecordValue(value, ['wid', 'windowId', 'window_id'], session.wid);
-  setRecordValue(value, ['shellid', 'shellId', 'shell_id'], session.shellid);
-  setRecordValue(value, ['dw'], session.dw);
-  setRecordValue(value, ['fn', 'functionName'], session.fn);
-  setRecordValue(value, ['ts', 'timestamp'], String(Date.now()));
-
-  for (const child of Object.values(value)) {
-    refreshSessionFields(child, session);
-  }
-};
-
-const setRecordValue = (record: Record<string, unknown>, keys: string[], value: string | undefined): void => {
-  if (!value) return;
-
-  for (const key of keys) {
-    if (key in record) {
-      record[key] = value;
-    }
-  }
 };
 
 const serializeBody = (body: unknown, headers: Record<string, string>): Document | XMLHttpRequestBodyInit | null => {
@@ -309,8 +239,6 @@ const safeResponseText = (xhr: XMLHttpRequest): string | undefined => {
     return undefined;
   }
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const createCorrelationId = (templateId: string): string => `p21-follow-up:${templateId}:${nextCorrelationId++}`;
 

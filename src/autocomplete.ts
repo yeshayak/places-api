@@ -3,7 +3,7 @@
 
 import { duplicateCheck } from './utils/duplicateCheck';
 import { loadGoogleMaps } from './loadMap';
-import { putAddressUpdates, type P21AddressUpdateValue } from './p21-data-endpoint';
+import { updateAddressFields, getP21Value, type P21AddressUpdateValue } from './p21-data-endpoint';
 
 const autocompleteInstances = new WeakMap<HTMLInputElement, google.maps.places.Autocomplete>();
 let isProcessingSelection = false;
@@ -87,8 +87,13 @@ const isUsableElement = (element: Element): boolean => {
  * @param includeName - Whether to include the place name
  */
 export const handlePlaceSelect = async (autocomplete: google.maps.places.Autocomplete, addressFields: string, includeName: boolean): Promise<void> => {
-  if (!autocomplete || isProcessingSelection) {
-    console.error('Autocomplete is not initialized.');
+  if (!autocomplete) {
+    console.error('[P21 EXT] handlePlaceSelect called without an autocomplete instance.');
+    return;
+  }
+
+  if (isProcessingSelection) {
+    console.warn('[P21 EXT] Autocomplete selection already in progress. Ignoring duplicate trigger.');
     return;
   }
 
@@ -137,14 +142,15 @@ export const handlePlaceSelect = async (autocomplete: google.maps.places.Autocom
 
     console.log('Selected Place:', place);
 
-    const updateResult = await putAddressUpdates(addressFields, place, includeName);
+    const updateResult = await updateAddressFields(addressFields, place, includeName);
     if (!updateResult.ok) {
       console.error('P21 data endpoint address update failed:', updateResult);
       return;
     }
 
     // Check for duplicates if address1 is updated
-    if (place.address1) {
+    // Only run duplicate check if a customer ID is present in the current context
+    if (place.address1 && getP21Value('customer_id')) {
       await duplicateCheck(place.address1);
     }
   } catch (error) {

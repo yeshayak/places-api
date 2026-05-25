@@ -1,5 +1,5 @@
 import { AutocompleteElement, handlePlaceSelect } from './autocomplete';
-import type { P21SessionSnapshot, P21DesignResponse } from './p21-session';
+import type { P21DesignResponse } from './p21-session';
 import { trackActiveContext } from './p21-data-endpoint';
 
 // Using global AngularScope
@@ -11,6 +11,7 @@ const SELECTORS = {
   TAB_HEADER: '#p21TabsetDir ul',
   SHIP_TO_INPUT: '[id$="shipto.ship_to_name"], [id$="ship_to_name"]',
   SHIP_TO_CONTAINER: '[id="shipto"], [id$="TP_SHIPTO.shipto"], [id*="TP_SHIPTO.shipto."]',
+  CUSTOMER_ID: '[id="order.customer_id"]',
   ORDER_NO: '[id="order.order_no"]',
   BALANCE: '[id="remittotals.cf_balance"]',
   CONTACT_ID: '[id="tp_contacts.contact_id"]',
@@ -28,6 +29,7 @@ const state = {
   paymentListenersAttached: false,
   lastPaymentLink: '',
   paymentLinkTimeout: null as number | null,
+  isInitializing: false,
 };
 
 interface OrderRecord {
@@ -59,65 +61,73 @@ const findVisibleShipToNameInput = (): HTMLInputElement | null => Array.from(doc
  * Initialize Google Places Autocomplete for the Ship To tab.
  */
 const initializeAutocomplete = async (): Promise<void> => {
-  const currentShipToInput = findVisibleShipToNameInput();
-  const tabListHeader = document.querySelector(SELECTORS.TAB_HEADER);
-  const activeTab = tabListHeader?.querySelector('.active') as HTMLElement;
-  const isShipToTabActive = activeTab?.dataset.menuItem === 'TP_SHIPTO';
+  if (state.isInitializing) return;
 
-  // Scenario 1: Not on Ship To tab and no input found. Clear state if any.
-  if (!isShipToTabActive && !currentShipToInput) {
-    if (state.autocomplete || state.autocompleteInput) {
-      console.log(`${LOG_PREFIX} Autocomplete: Clearing state as Ship To tab is not active or input is gone.`);
-      if (state.autocompleteListener) {
-        google.maps.event.removeListener(state.autocompleteListener);
+  try {
+    state.isInitializing = true;
+
+    const currentShipToInput = findVisibleShipToNameInput();
+    const tabListHeader = document.querySelector(SELECTORS.TAB_HEADER);
+    const activeTab = tabListHeader?.querySelector('.active') as HTMLElement;
+    const isShipToTabActive = activeTab?.dataset.menuItem === 'TP_SHIPTO';
+
+    // Scenario 1: Not on Ship To tab and no input found. Clear state if any.
+    if (!isShipToTabActive && !currentShipToInput) {
+      if (state.autocomplete || state.autocompleteInput) {
+        console.log(`${LOG_PREFIX} Autocomplete: Clearing state as Ship To tab is not active or input is gone.`);
+        if (state.autocompleteListener) {
+          google.maps.event.removeListener(state.autocompleteListener);
+        }
+        state.autocomplete = null;
+        state.autocompleteInput = null;
+        state.autocompleteListener = null;
+      }
+      return;
+    }
+
+    // Scenario 2: Autocomplete is already correctly set up for the current input.
+    // Check if the input element is the same AND we have an autocomplete instance AND a listener.
+    if (state.autocompleteInput === currentShipToInput && state.autocomplete && state.autocompleteListener) {
+      // console.log(`${LOG_PREFIX} Autocomplete: Already initialized for current input.`); // Too chatty
+      return;
+    }
+
+    // Scenario 3: Need to initialize or re-initialize.
+    console.log(`${LOG_PREFIX} Autocomplete: Attempting to initialize.`);
+
+    // Remove existing listener if present before potentially getting a new instance
+    if (state.autocompleteListener) {
+      google.maps.event.removeListener(state.autocompleteListener);
+      state.autocompleteListener = null;
+    }
+
+    const newAutocompleteInstance = await AutocompleteElement(SELECTORS.SHIP_TO_INPUT);
+
+    if (newAutocompleteInstance) {
+      state.autocomplete = newAutocompleteInstance;
+      state.autocompleteInput = currentShipToInput;
+
+      // Attach new listener for the legacy place_changed event
+      state.autocompleteListener = google.maps.event.addListener(state.autocomplete, 'place_changed', () => {
+        if (state.autocomplete) {
+          handlePlaceSelect(state.autocomplete, SELECTORS.SHIP_TO_CONTAINER, true);
+        }
+      });
+
+      console.log(`${LOG_PREFIX} Autocomplete: Place changed listener attached.`);
+    } else {
+      // AutocompleteElement returned null (e.g., input not found, or error during init)
+      if (state.autocomplete || state.autocompleteInput) {
+        console.warn(`${LOG_PREFIX} Autocomplete: Could not initialize for input: ${SELECTORS.SHIP_TO_INPUT}. Clearing state.`);
+      } else {
+        console.warn(`${LOG_PREFIX} Autocomplete: Could not initialize for input: ${SELECTORS.SHIP_TO_INPUT}.`);
       }
       state.autocomplete = null;
       state.autocompleteInput = null;
-      state.autocompleteListener = null;
+      state.autocompleteListener = null; // Ensure listener is null if init failed
     }
-    return;
-  }
-
-  // Scenario 2: Autocomplete is already correctly set up for the current input.
-  // Check if the input element is the same AND we have an autocomplete instance AND a listener.
-  if (state.autocompleteInput === currentShipToInput && state.autocomplete && state.autocompleteListener) {
-    // console.log(`${LOG_PREFIX} Autocomplete: Already initialized for current input.`); // Too chatty
-    return;
-  }
-
-  // Scenario 3: Need to initialize or re-initialize.
-  console.log(`${LOG_PREFIX} Autocomplete: Attempting to initialize.`);
-
-  // Remove existing listener if present before potentially getting a new instance
-  if (state.autocompleteListener) {
-    google.maps.event.removeListener(state.autocompleteListener);
-    state.autocompleteListener = null;
-  }
-
-  const newAutocompleteInstance = await AutocompleteElement(SELECTORS.SHIP_TO_INPUT);
-
-  if (newAutocompleteInstance) {
-    state.autocomplete = newAutocompleteInstance;
-    state.autocompleteInput = currentShipToInput;
-
-    // Attach new listener for the legacy place_changed event
-    state.autocompleteListener = google.maps.event.addListener(state.autocomplete, 'place_changed', () => {
-      if (state.autocomplete) {
-        handlePlaceSelect(state.autocomplete, SELECTORS.SHIP_TO_CONTAINER, true);
-      }
-    });
-
-    console.log(`${LOG_PREFIX} Autocomplete: Place changed listener attached.`);
-  } else {
-    // AutocompleteElement returned null (e.g., input not found, or error during init)
-    if (state.autocomplete || state.autocompleteInput) {
-      console.warn(`${LOG_PREFIX} Autocomplete: Could not initialize for input: ${SELECTORS.SHIP_TO_INPUT}. Clearing state.`);
-    } else {
-      console.warn(`${LOG_PREFIX} Autocomplete: Could not initialize for input: ${SELECTORS.SHIP_TO_INPUT}.`);
-    }
-    state.autocomplete = null;
-    state.autocompleteInput = null;
-    state.autocompleteListener = null; // Ensure listener is null if init failed
+  } finally {
+    state.isInitializing = false;
   }
 };
 
@@ -149,7 +159,7 @@ const hasRemittanceData = (value: unknown): boolean => {
 };
 
 window.addEventListener('p21-ext:xhr-response', (event) => {
-  const detail = (event as CustomEvent<{ responseValue?: unknown; session?: P21SessionSnapshot; url: string; method: string }>).detail;
+  const detail = (event as CustomEvent<{ responseValue?: unknown; url: string; method: string }>).detail;
   const response = detail.responseValue as P21DesignResponse;
 
   // Ignore incremental updates to prevent feedback loops.

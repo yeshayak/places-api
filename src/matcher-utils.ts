@@ -93,7 +93,7 @@ export const createPayloadFingerprint = (value: unknown): string => {
   }
 };
 
-export const getSessionKey = (request: ParsedP21Request): string => [request.session.shellid, request.session.wid, request.session.dw, request.session.fn].filter(Boolean).join('|') || request.normalizedUrl;
+export const getSessionKey = (request: ParsedP21Request): string => request.normalizedUrl;
 
 export const normalizeFieldName = (value: unknown): string =>
   String(value ?? '')

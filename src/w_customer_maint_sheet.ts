@@ -1,5 +1,5 @@
 import { AutocompleteElement, handlePlaceSelect } from './autocomplete';
-import type { P21SessionSnapshot, P21DesignResponse } from './p21-session';
+import type { P21DesignResponse } from './p21-session';
 import { trackActiveContext } from './p21-data-endpoint';
 
 const LOG_PREFIX = '[P21 EXT]';
@@ -70,7 +70,7 @@ const initializeAutoComplete = async (): Promise<void> => {
 };
 
 window.addEventListener('p21-ext:xhr-response', (event) => {
-  const detail = (event as CustomEvent<{ responseValue?: unknown; session?: P21SessionSnapshot; url: string }>).detail;
+  const detail = (event as CustomEvent<{ responseValue?: unknown; url: string }>).detail;
   const response = detail.responseValue as P21DesignResponse;
 
   trackActiveContext(response, detail.url);

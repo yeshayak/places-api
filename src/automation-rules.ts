@@ -1,4 +1,3 @@
-import type { P21SessionSnapshot } from './p21-session';
 import type { ParsedP21Payload, ParsedP21Request } from './request-parser';
 import { createPayloadFingerprint, eventNameIncludes, extractItemSnapshots, findEventNames, findFieldsByName, getPayloadValue, getSessionKey, hasFieldWithMeaningfulValue, isP21UiFullRequest } from './matcher-utils';
 
@@ -25,7 +24,6 @@ export interface P21AutomationEvent {
   method: string;
   url: string;
   endpointKind: string;
-  session: P21SessionSnapshot;
   evidence: Record<string, unknown>;
   sourceRequest?: AutomationRuleContext['sourceRequest'];
 }
@@ -141,7 +139,6 @@ const createEvent = (rule: AutomationRule, context: AutomationRuleContext): P21A
     method: context.method,
     url: context.request.normalizedUrl,
     endpointKind: context.request.endpointKind,
-    session: context.request.session,
     evidence,
     sourceRequest: context.sourceRequest,
   };

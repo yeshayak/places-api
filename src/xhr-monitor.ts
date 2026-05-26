@@ -1,6 +1,6 @@
 import { evaluateAutomationRules } from './automation-rules';
 import { isFollowUpXhr, subscribeFollowUpResult } from './follow-up-requests';
-import { parseP21Payload, parseP21Request, type ParsedP21Payload } from './request-parser';
+import { parseP21Payload, parseP21Request, type ParsedP21Payload } from './utils/request-parser';
 
 interface XhrWatcherOptions {
   debug?: boolean;

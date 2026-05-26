@@ -7,7 +7,14 @@
   const meta = document.createElement('meta');
   meta.name = 'places-api-injected';
   meta.content = 'true';
+
+  // Safety check for extension context
+  if (chrome.runtime?.id) {
+    meta.setAttribute('data-sandbox-url', chrome.runtime.getURL('sandbox.html'));
+  }
   document.head.appendChild(meta);
+
+  const isContextValid = () => !!chrome.runtime?.id;
 
   const injectScript = (filePath: string, tag: string): Promise<void> => {
     return new Promise((resolve, reject) => {
@@ -35,9 +42,11 @@
     if (apiKey && apiKey.trim()) {
       window.postMessage({ type: 'GATOR_API_KEY', apiKey }, '*');
       console.log('[Content] API key loaded from localStorage');
-    } else {
+    } else if (isContextValid()) {
       // Fallback: request from chrome.storage.local
       chrome.storage.local.get(['apiKey'], (result) => {
+        if (!isContextValid()) return;
+
         if (result.apiKey && result.apiKey.trim()) {
           localStorage.setItem('gatorPlacesApiKey', result.apiKey);
           window.postMessage({ type: 'GATOR_API_KEY', apiKey: result.apiKey }, '*');
@@ -63,7 +72,7 @@
   };
 
   const injectForTitle = (title: string | undefined): void => {
-    if (!title) return;
+    if (!title || !isContextValid()) return;
 
     const scriptKey = Object.keys(scriptMapping).find((key) => title.startsWith(key));
     if (!scriptKey) return;
@@ -72,10 +81,18 @@
 
     scripts
       .reduce((chain, script) => {
-        return chain.then(() => injectScript(chrome.runtime.getURL(script), 'body'));
+        return chain.then(() => {
+          if (!isContextValid()) return Promise.resolve();
+          return injectScript(chrome.runtime.getURL(script), 'body');
+        });
       }, Promise.resolve())
       .then(() => console.log(`[P21 EXT] Context scripts loaded for: ${scriptKey}`))
-      .catch((error) => console.error(`[P21 EXT] Injection failed:`, error));
+      .catch((error) => {
+        // Filter out context invalidated errors to clean up the console
+        if (!error.message?.includes('context invalidated')) {
+          console.error(`[P21 EXT] Injection failed:`, error);
+        }
+      });
   };
 
   injectForTitle(document.title);

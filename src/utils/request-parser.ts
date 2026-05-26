@@ -84,19 +84,15 @@ const classifyEndpoint = (path: string): P21EndpointKind => {
   if (path.endsWith('/ui/full/v2/data/data') || path.endsWith('/ui/full/v1/data/data')) {
     return 'data';
   }
-
   if (/\/ui\/full\/v\d+\/grid\/.+\/elements\/state$/i.test(path)) {
     return 'grid-state';
   }
-
   if (path.includes('/api/v2/transaction') || path.includes('/transaction')) {
     return 'transaction';
   }
-
   if (path.includes('/ui/full/')) {
     return 'ui-full';
   }
-
   return 'unknown';
 };
 
@@ -118,9 +114,7 @@ const parseUrl = (url: string): { normalizedUrl: string; path: string; query: Re
 };
 
 const summarizePayload = (value: unknown): P21PayloadSummary | undefined => {
-  if (!isRecord(value)) {
-    return undefined;
-  }
+  if (!isRecord(value)) return undefined;
 
   const data = getRecord(value.Data);
   const dataInformation = getRecord(value.DataInformation);
@@ -151,7 +145,6 @@ const extractTpItems = (value: Record<string, unknown>): unknown[] | undefined =
   const data = getRecord(value.Data);
   const dataTpItems = getRecord(data?.TP_ITEMS);
   const candidate = direct?.items ?? dataTpItems?.items;
-
   return Array.isArray(candidate) ? candidate : undefined;
 };
 
@@ -162,9 +155,7 @@ const extractEventName = (event: unknown): string | undefined => {
 };
 
 const getRecord = (value: unknown): Record<string, unknown> | undefined => (isRecord(value) ? value : undefined);
-
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
-
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   if (!isRecord(value)) return false;
   const prototype = Object.getPrototypeOf(value);

@@ -2,7 +2,7 @@
 /// <reference types="google.maps" />
 
 import { duplicateCheck } from './utils/duplicateCheck';
-import { loadGoogleMaps } from './loadMap';
+import { loadGoogleMaps } from './utils/loadMap';
 import { updateAddressFields, getP21Value, type P21AddressUpdateValue } from './p21-data-endpoint';
 
 const autocompleteInstances = new WeakMap<HTMLInputElement, google.maps.places.Autocomplete>();

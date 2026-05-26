@@ -10,14 +10,17 @@ interface RootScope extends angular.IScope {
 }
 
 export const getUserSession = (): UserSession | null => {
-  const root = angular.element('#contextWindow').scope() as RootScope;
-  if (!root || !root.userSession) {
+  const ng = (window as any).angular;
+  const element = document.querySelector('#contextWindow, [window_classname]');
+  const scope = ng && element ? (ng.element(element).scope() as RootScope) : null;
+
+  if (!scope || !scope.userSession) {
     console.error('User session is not available.');
     return null;
   }
 
   return {
-    token: root.userSession.token,
-    p21SoaUrl: root.userSession.p21SoaUrl,
+    token: scope.userSession.token,
+    p21SoaUrl: scope.userSession.p21SoaUrl,
   };
 };

@@ -1,5 +1,5 @@
-import type { ParsedP21Payload, ParsedP21Request } from './request-parser';
-import { createPayloadFingerprint, eventNameIncludes, extractItemSnapshots, findEventNames, findFieldsByName, getPayloadValue, getSessionKey, hasFieldWithMeaningfulValue, isP21UiFullRequest } from './matcher-utils';
+import type { ParsedP21Payload, ParsedP21Request } from './utils/request-parser';
+import { createPayloadFingerprint, eventNameIncludes, extractItemSnapshots, findEventNames, findFieldsByName, getPayloadValue, getSessionKey, hasFieldWithMeaningfulValue, isP21UiFullRequest, type ItemSnapshot } from './utils/matcher-utils';
 
 export type P21AutomationEventType = 'item-added' | 'one-time-price-changed' | 'disposition-updated' | 'grid-refresh-triggered';
 
@@ -62,15 +62,15 @@ const rules: AutomationRule[] = [
 
       const sessionKey = getSessionKey(context.request);
       const previousItems = itemStateBySession.get(sessionKey);
-      itemStateBySession.set(sessionKey, new Set(responseItems.map((item) => item.key)));
+      itemStateBySession.set(sessionKey, new Set(responseItems.map((item: ItemSnapshot) => item.key)));
 
       if (!previousItems) return undefined;
 
-      const addedItems = responseItems.filter((item) => !previousItems.has(item.key));
+      const addedItems = responseItems.filter((item: ItemSnapshot) => !previousItems.has(item.key));
       if (addedItems.length === 0) return undefined;
 
       return {
-        itemKeys: addedItems.map((item) => item.key),
+        itemKeys: addedItems.map((item: ItemSnapshot) => item.key),
         itemCount: responseItems.length,
       };
     },

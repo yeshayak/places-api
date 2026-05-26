@@ -1,4 +1,5 @@
-import type { P21DesignResponse } from './p21-session';
+/// <reference types="angular" />
+import type { P21DesignResponse, P21DataWindowProperties, P21FieldProperty } from './utils/p21-session';
 
 export interface P21FieldUpdate {
   dwName: string;
@@ -28,18 +29,25 @@ interface P21ActiveContext {
   dataWindow?: string;
 }
 
+// New state to store field properties
+interface FieldMetadata {
+  visible: boolean;
+  enabled: boolean;
+}
+
+// Map: fullDwName (e.g., 'TP_ITEMS.items') -> fieldName -> FieldMetadata
+type DataWindowFieldMetadataMap = Map<string, Map<string, FieldMetadata>>;
+
 interface P21DataEndpointWindow extends Window {
-  __p21DataEndpoint?: {
-    buildAddressUpdates: typeof buildAddressUpdates;
-    triggerFieldUpdates: typeof triggerFieldUpdates;
-    trackActiveContext: typeof trackActiveContext;
-  };
+  __p21DataEndpoint?: { buildAddressUpdates: typeof buildAddressUpdates; triggerFieldUpdates: typeof triggerFieldUpdates; trackActiveContext: typeof trackActiveContext };
 }
 
 const state = {
   activeContext: {} as P21ActiveContext,
   dataWindowSchemas: new Map<string, Set<string>>(),
   allDataWindows: new Map<string, Record<string, unknown>[]>(), // Stores all DataWindows from the last design response
+  // Map: windowName -> DataWindowFieldMetadataMap
+  windowFieldProperties: new Map<string, DataWindowFieldMetadataMap>(), // New state to store field properties
 };
 
 const LOG_PREFIX = '[P21 EXT]';
@@ -69,6 +77,7 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
     state.activeContext = {};
     state.dataWindowSchemas.clear();
     state.allDataWindows.clear();
+    state.windowFieldProperties.clear(); // Clear new state
   }
 
   const { Result, Data, DataInformation } = response;
@@ -117,6 +126,14 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
     state.activeContext.tabName = tn;
     state.activeContext.dataWindow = dw;
   }
+
+  // 5. Process field properties (visibility, enabled state, etc.)
+  if (Result?.PropertiesSet) {
+    processDataWindowProperties(Result.PropertiesSet);
+  }
+  if (Result?.Properties) {
+    Object.values(Result.Properties).forEach(processDataWindowProperties);
+  }
 };
 
 /**
@@ -136,6 +153,122 @@ export const getP21Value = (fieldName: string): unknown => {
     }
   }
   return undefined;
+};
+
+/**
+ * Standardized utility to retrieve an Angular scope with optional polling.
+ * Useful for P21's dynamic loading where elements might exist but scope isn't bound yet.
+ */
+export const getP21Scope = async <T = any>(selector: string | Element, maxRetries = 10): Promise<T | null> => {
+  const ng = (window as any).angular;
+  if (!ng) return null;
+
+  let retryCount = 0;
+  while (retryCount < maxRetries) {
+    try {
+      const element = typeof selector === 'string' ? document.querySelector(selector) : selector;
+      if (element) {
+        const scope = ng.element(element).scope();
+        if (scope) return scope as T;
+      }
+    } catch (e) {
+      /* Angular scope might not be ready */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    retryCount++;
+  }
+  return null;
+};
+
+// New helper to get field metadata
+export const getFieldMetadata = (fullDwName: string, fieldName: string): FieldMetadata | undefined => {
+  const windowName = state.activeContext.windowName;
+  if (!windowName) return undefined;
+  return state.windowFieldProperties.get(windowName)?.get(fullDwName)?.get(fieldName);
+};
+
+/**
+ * Processes P21DataWindowProperties to extract and store field metadata.
+ * @param propertiesContainer The P21DataWindowProperties object (e.g., Result.PropertiesSet or an entry from Result.Properties)
+ */
+const processDataWindowProperties = (propertiesContainer: P21DataWindowProperties) => {
+  const currentWindowName = state.activeContext.windowName;
+  if (!currentWindowName) return;
+
+  let dataWindowFieldMetadataMap = state.windowFieldProperties.get(currentWindowName);
+  if (!dataWindowFieldMetadataMap) {
+    dataWindowFieldMetadataMap = new Map();
+    state.windowFieldProperties.set(currentWindowName, dataWindowFieldMetadataMap);
+  }
+
+  // Step 1: Build a map from dwname to its fullDwName (e.g., "items" -> "TP_ITEMS.items")
+  const dwNameToFullDwNameMap = new Map<string, string>();
+  propertiesContainer.Properties?.forEach((prop: P21FieldProperty) => {
+    if (prop.dwname && prop.tabpagename) {
+      dwNameToFullDwNameMap.set(prop.dwname, `${prop.tabpagename}.${prop.dwname}`);
+    }
+  });
+
+  // Helper to update metadata for a specific field
+  const updateFieldMetadata = (fullDwName: string, fieldName: string, propType: 'visible' | 'enabled', value: string | number | boolean) => {
+    if (!dataWindowFieldMetadataMap!.has(fullDwName)) {
+      dataWindowFieldMetadataMap!.set(fullDwName, new Map());
+    }
+    const fieldMap = dataWindowFieldMetadataMap!.get(fullDwName)!;
+    if (!fieldMap.has(fieldName)) {
+      fieldMap.set(fieldName, { visible: false, enabled: false });
+    }
+    const metadata = fieldMap.get(fieldName)!;
+    if (propType === 'visible') metadata.visible = value === 'true' || value === true;
+    if (propType === 'enabled') metadata.enabled = value === 'true' || value === true;
+  };
+
+  // Step 2: Process 'visible' and 'enabled' properties
+  for (const propType of ['visible', 'enabled'] as const) {
+    propertiesContainer[propType]?.forEach((propEntry: P21FieldProperty) => {
+      if (propEntry._internalrowindex === '1') {
+        for (const fieldName in propEntry) {
+          if (fieldName !== '_internalrowindex' && fieldName !== 'Properties_Id' && fieldName !== 'dwname' && fieldName !== 'tabpagename') {
+            let targetFullDwName: string | undefined;
+
+            // Try to infer the data window from the active context first
+            if (state.activeContext.dataWindow && state.activeContext.tabName) {
+              targetFullDwName = `${state.activeContext.tabName}.${state.activeContext.dataWindow}`;
+            }
+
+            // If not found, try to match the fieldName to a schema to find its data window
+            if (!targetFullDwName) {
+              for (const [dwKey, schema] of state.dataWindowSchemas.entries()) {
+                if (schema.has(fieldName)) {
+                  targetFullDwName = dwKey;
+                  break;
+                }
+              }
+            }
+
+            // If still not found, try to use the dwNameToFullDwNameMap
+            if (!targetFullDwName) {
+              for (const [_, fullDwNameFromMap] of dwNameToFullDwNameMap.entries()) {
+                const schema = state.dataWindowSchemas.get(fullDwNameFromMap);
+                if (schema?.has(fieldName)) {
+                  targetFullDwName = fullDwNameFromMap;
+                  break;
+                }
+              }
+            }
+
+            if (targetFullDwName) {
+              updateFieldMetadata(targetFullDwName, fieldName, propType, propEntry[fieldName]!);
+            } else {
+              if (isDebugEnabled() || isFullDebugEnabled()) {
+                console.warn(LOG_PREFIX, `Could not determine DataWindow for field "${fieldName}" in "${propType}" properties.`);
+              }
+            }
+          }
+        }
+      }
+    });
+  }
 };
 
 /**
@@ -202,6 +335,11 @@ export const buildAddressUpdates = (containerSelector: string, place: P21Address
 
 export const updateAddressFields = async (containerSelector: string, place: P21AddressUpdateValue, includeName: boolean): Promise<P21DataEndpointUpdateResult> => {
   const fields = buildAddressUpdates(containerSelector, place, includeName);
+
+  if (isDebugEnabled() || isFullDebugEnabled()) {
+    console.log(LOG_PREFIX, `Mapped ${fields.length} target fields for update.`, fields);
+  }
+
   return triggerFieldUpdates(fields, containerSelector);
 };
 
@@ -227,25 +365,35 @@ export const triggerFieldUpdates = async (fields: P21FieldUpdate[], containerSel
     const element = containerSelector ? document.querySelector(containerSelector)?.querySelector(fieldSelector) : document.querySelector(fieldSelector);
 
     if (element instanceof HTMLElement && !(element as any).disabled && !(element as any).readOnly) {
+      // Skip if value is already correct to reduce P21 sync noise
+      if (element instanceof HTMLInputElement && element.value === field.value) {
+        continue;
+      }
+
       if (isDebugEnabled() || isFullDebugEnabled()) {
         console.log(LOG_PREFIX, `[${i + 1}/${fields.length}] Triggering sequence for: ${field.fieldName} -> ${field.value}`);
       }
 
       const jQuery = (window as any).jQuery;
+
+      // Focus and notify start of interaction
+      element.focus();
       if (jQuery) {
         const $el = jQuery(element);
         $el.trigger('focus').trigger('mouseenter').trigger('mousedown');
-        if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-          $el.val(field.value);
-          $el.trigger('input'); // Notifies Angular ngModel of typing
-        }
-        $el.trigger('change').trigger('blur'); // Kicks off the P21 network sync
+      }
+
+      // Update value
+      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+        element.value = field.value;
+        // Dispatch input event to notify Angular/React/Vue listeners
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
+      // Notify end of interaction to trigger P21 data synchronization
+      if (jQuery) {
+        jQuery(element).trigger('change').trigger('blur');
       } else {
-        element.focus();
-        if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-          (element as HTMLInputElement).value = field.value;
-          element.dispatchEvent(new Event('input', { bubbles: true }));
-        }
         element.dispatchEvent(new Event('change', { bubbles: true }));
         element.dispatchEvent(new Event('blur', { bubbles: true }));
       }
@@ -281,33 +429,38 @@ export const triggerFieldUpdates = async (fields: P21FieldUpdate[], containerSel
  * Forces the Prophet 21 UI to refresh by triggering an Angular digest cycle.
  */
 const triggerAngularRefresh = (): void => {
-  const ng = (window as any).angular;
   const container = document.querySelector('#contextWindow, [window_classname]');
+  if (!container) return;
 
-  if (ng && container) {
-    const scope = ng.element(container).scope();
+  getP21Scope(container, 1).then((scope) => {
     const rootScope = scope?.$root;
-
     if (rootScope) {
-      if (isDebugEnabled() || isFullDebugEnabled()) {
-        console.log(LOG_PREFIX, 'Triggering UI synchronization.');
-      }
-
-      // Safe apply: Check if digest is already in progress
       const phase = rootScope.$$phase;
       if (phase !== '$apply' && phase !== '$digest') {
+        if (isDebugEnabled() || isFullDebugEnabled()) console.log(LOG_PREFIX, 'Triggering UI synchronization.');
         rootScope.$broadcast('p21:data_changed');
         rootScope.$broadcast('p21:retrieve');
         rootScope.$apply();
       }
     }
-  }
+  });
 };
-
 dataEndpointWindow.__p21DataEndpoint = {
   buildAddressUpdates,
   triggerFieldUpdates,
   trackActiveContext,
 };
 
+// Process field properties from Result.PropertiesSet or Result.Properties
+if (dataEndpointWindow.__p21DataEndpoint) {
+  // This part will be called by the XHR monitor when a response comes in.
+  // The trackActiveContext function will then call processDataWindowProperties internally.
+  // No need to call it directly here.
+}
+
 const getAddressFieldCandidates = (component: string): string[] => ADDRESS_COMPONENT_FIELD_CANDIDATES[component as keyof P21AddressUpdateValue] ?? [component];
+
+// Initial processing of properties if available (e.g., for initial page load)
+if (dataEndpointWindow.__p21DataEndpoint) {
+  // This is handled by trackActiveContext when it's called by the XHR monitor.
+}

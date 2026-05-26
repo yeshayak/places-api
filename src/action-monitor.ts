@@ -1,4 +1,4 @@
-import type { P21DesignResponse, P21EventData } from './p21-session';
+import type { P21DesignResponse, P21EventData } from './utils/p21-session';
 
 /**
  * Action Monitor: Intercepts DOM and AngularJS events to map P21 lifecycles.
@@ -198,7 +198,7 @@ const setupResponseObservation = () => {
 
     if (!response || !Array.isArray(response.Events)) return;
 
-    response.Events.forEach((p21Event) => {
+    response.Events.forEach((p21Event: { EventData?: P21EventData; Name?: string; Publisher?: string }) => {
       const data = (p21Event.EventData || {}) as P21EventData;
 
       // Extract target hierarchy from the event data for better context (e.g. "Order Entry > Ship To > Address1")

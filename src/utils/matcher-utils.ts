@@ -23,7 +23,6 @@ export const findFieldsByName = (value: unknown, names: string[]): FieldMatch[] 
 
   walkValue(value, [], (candidate, path) => {
     if (!isRecord(candidate)) return;
-
     for (const [key, child] of Object.entries(candidate)) {
       if (normalizedNames.has(normalizeFieldName(key))) {
         matches.push({
@@ -42,18 +41,13 @@ export const hasFieldWithMeaningfulValue = (value: unknown, names: string[]): bo
 
 export const findEventNames = (value: unknown): string[] => {
   const names = new Set<string>();
-
   walkValue(value, [], (candidate, path) => {
     if (!Array.isArray(candidate) || normalizeFieldName(path[path.length - 1]) !== 'events') return;
-
     for (const event of candidate) {
       const name = extractEventName(event);
-      if (name) {
-        names.add(name);
-      }
+      if (name) names.add(name);
     }
   });
-
   return [...names];
 };
 
@@ -67,21 +61,17 @@ export const eventNameIncludes = (value: unknown, fragments: string[]): boolean 
 
 export const extractItemSnapshots = (value: unknown): ItemSnapshot[] => {
   const snapshots: ItemSnapshot[] = [];
-
   for (const path of ITEM_COLLECTION_KEYS) {
     const collection = getValueAtPath(value, path);
     if (!Array.isArray(collection)) continue;
-
     for (const item of collection) {
       if (!isRecord(item)) continue;
-
       snapshots.push({
         key: getItemKey(item),
         value: item,
       });
     }
   }
-
   return dedupeItems(snapshots);
 };
 
@@ -106,14 +96,11 @@ export const isRecord = (value: unknown): value is Record<string, unknown> => ty
 
 const walkValue = (value: unknown, path: string[], visit: (value: unknown, path: string[]) => void): void => {
   visit(value, path);
-
   if (Array.isArray(value)) {
     value.forEach((child, index) => walkValue(child, [...path, String(index)], visit));
     return;
   }
-
   if (!isRecord(value)) return;
-
   for (const [key, child] of Object.entries(value)) {
     walkValue(child, [...path, key], visit);
   }
@@ -140,7 +127,6 @@ const isMeaningfulValue = (value: unknown): boolean => {
 
 const getItemKey = (item: Record<string, unknown>): string => {
   const candidate = item.rowid ?? item.row_id ?? item.uid ?? item.item_uid ?? item.line_no ?? item.lineNo ?? item.item_id ?? item.itemId ?? item.inv_mast_uid;
-
   return candidate === undefined || candidate === null ? createPayloadFingerprint(item) : String(candidate);
 };
 
@@ -154,14 +140,8 @@ const dedupeItems = (items: ItemSnapshot[]): ItemSnapshot[] => {
 };
 
 const sortJsonValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (!isRecord(value)) {
-    return value;
-  }
-
+  if (Array.isArray(value)) return value.map(sortJsonValue);
+  if (!isRecord(value)) return value;
   return Object.keys(value)
     .sort()
     .reduce<Record<string, unknown>>((sorted, key) => {

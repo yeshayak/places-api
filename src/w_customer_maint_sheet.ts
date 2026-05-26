@@ -1,5 +1,5 @@
 import { AutocompleteElement, handlePlaceSelect } from './autocomplete';
-import type { P21DesignResponse } from './p21-session';
+import type { P21DesignResponse } from './utils/p21-session';
 import { trackActiveContext } from './p21-data-endpoint';
 
 const LOG_PREFIX = '[P21 EXT]';

@@ -6,7 +6,11 @@
   "permissions": ["scripting", "storage", "tabs"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "content_security_policy": {
-    "extension_pages": "default-src 'self'; style-src 'self'; connect-src 'self' https://gatorps.prokeep.com"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://gatorps.prokeep.com https://places.googleapis.com",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' https://maps.googleapis.com; connect-src 'self' https://maps.googleapis.com https://places.googleapis.com;"
+  },
+  "sandbox": {
+    "pages": ["sandbox.html"]
   },
   "background": {
     "service_worker": "background.js"
@@ -41,9 +45,12 @@
         "request-parser.js",
         "p21-session.js",
         "utils/userSession.js",
-        "utils/duplicateCheck.js"
+        "utils/duplicateCheck.js",
+        "sandbox-autocomplete.js",
+        "sandbox.html",
+        "sandbox.js"
       ],
-      "matches": ["https://*/*"]
+      "matches": ["<all_urls>"]
     }
   ]
 }

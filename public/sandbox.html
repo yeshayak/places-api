@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      body {
+        margin: 0;
+        padding: 10px;
+        font-family: sans-serif;
+        overflow: hidden;
+      }
+      .container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      input,
+      gmp-place-autocomplete {
+        width: 100%;
+        padding: 12px;
+        box-sizing: border-box;
+        border: 2px solid #3498db;
+        border-radius: 6px;
+        font-size: 14px;
+        outline: none;
+      }
+      .pac-container {
+        border-radius: 0 0 6px 6px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        font-family: sans-serif;
+      }
+      .header {
+        font-size: 12px;
+        color: #666;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">Search for Address</div>
+      <input type="text" id="autocomplete-input" placeholder="Start typing address..." />
+    </div>
+    <!-- Ensure the path here matches your actual Webpack output in the dist folder -->
+    <script type="module" src="sandbox.js"></script>
+  </body>
+</html>

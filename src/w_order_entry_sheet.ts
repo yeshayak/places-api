@@ -1,11 +1,11 @@
-import { AutocompleteElement, handlePlaceSelect } from './autocomplete';
-import type { P21DesignResponse } from './p21-session';
-import { trackActiveContext } from './p21-data-endpoint';
+import { attachSandboxLauncher, openSandbox } from './sandbox-autocomplete';
+import type { P21DesignResponse } from './utils/p21-session';
+import { trackActiveContext, getP21Scope } from './p21-data-endpoint';
 
 // Using global AngularScope
 type CustomScope = AngularScope;
 
-const LOG_PREFIX = '[P21 EXT - OE]';
+const LOG_PREFIX = '[P21 EXT]';
 
 const SELECTORS = {
   TAB_HEADER: '#p21TabsetDir ul',
@@ -23,13 +23,11 @@ const SELECTORS = {
 };
 
 const state = {
-  autocomplete: null as google.maps.places.Autocomplete | null, // The legacy Autocomplete object
-  autocompleteInput: null as HTMLInputElement | null,
-  autocompleteListener: null as google.maps.MapsEventListener | null,
   paymentListenersAttached: false,
   lastPaymentLink: '',
   paymentLinkTimeout: null as number | null,
   isInitializing: false,
+  hotkeyBound: false,
 };
 
 interface OrderRecord {
@@ -55,107 +53,84 @@ interface CustomerRecord {
 /**
  * Find the currently visible and enabled Ship To Name input field.
  */
-const findVisibleShipToNameInput = (): HTMLInputElement | null => Array.from(document.querySelectorAll<HTMLInputElement>(SELECTORS.SHIP_TO_INPUT)).find((input) => !input.disabled && input.isConnected && input.getClientRects().length > 0) ?? null;
+const findVisibleShipToNameInput = (): HTMLInputElement | null => {
+  const allMatches = document.querySelectorAll<HTMLInputElement>(SELECTORS.SHIP_TO_INPUT);
+
+  // Debug: Log if we found elements but they were filtered out
+  if (allMatches.length > 0) {
+    const visible = Array.from(allMatches).find((input) => {
+      const isVisible = input.getClientRects().length > 0;
+      const isEnabled = !input.disabled;
+      const isConnected = input.isConnected;
+      return isVisible && isEnabled && isConnected;
+    });
+
+    if (!visible) {
+      console.log(`${LOG_PREFIX} Found ${allMatches.length} inputs matching selector, but none passed visibility/enabled checks.`);
+    }
+    return visible ?? null;
+  }
+
+  return null;
+};
 
 /**
  * Initialize Google Places Autocomplete for the Ship To tab.
  */
-const initializeAutocomplete = async (): Promise<void> => {
+const initializeAutocomplete = async (retryCount = 0): Promise<void> => {
   if (state.isInitializing) return;
 
+  let currentShipToInput: HTMLInputElement | null = null;
   try {
-    state.isInitializing = true;
+    if (retryCount === 0) state.isInitializing = true;
 
-    const currentShipToInput = findVisibleShipToNameInput();
+    // Bind the Alt+A hotkey once
+    if (!state.hotkeyBound) {
+      window.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.altKey && e.key.toLowerCase() === 'a') {
+          const input = findVisibleShipToNameInput();
+          if (input) {
+            e.preventDefault();
+            openSandbox(SELECTORS.SHIP_TO_CONTAINER, true);
+          }
+        }
+      });
+      state.hotkeyBound = true;
+    }
+
+    currentShipToInput = findVisibleShipToNameInput();
     const tabListHeader = document.querySelector(SELECTORS.TAB_HEADER);
     const activeTab = tabListHeader?.querySelector('.active') as HTMLElement;
     const isShipToTabActive = activeTab?.dataset.menuItem === 'TP_SHIPTO';
 
-    // Scenario 1: Not on Ship To tab and no input found. Clear state if any.
-    if (!isShipToTabActive && !currentShipToInput) {
-      if (state.autocomplete || state.autocompleteInput) {
-        console.log(`${LOG_PREFIX} Autocomplete: Clearing state as Ship To tab is not active or input is gone.`);
-        if (state.autocompleteListener) {
-          google.maps.event.removeListener(state.autocompleteListener);
-        }
-        state.autocomplete = null;
-        state.autocompleteInput = null;
-        state.autocompleteListener = null;
-      }
-      return;
-    }
-
-    // Scenario 2: Autocomplete is already correctly set up for the current input.
-    // Check if the input element is the same AND we have an autocomplete instance AND a listener.
-    if (state.autocompleteInput === currentShipToInput && state.autocomplete && state.autocompleteListener) {
-      // console.log(`${LOG_PREFIX} Autocomplete: Already initialized for current input.`); // Too chatty
-      return;
-    }
-
-    // Scenario 3: Need to initialize or re-initialize.
-    console.log(`${LOG_PREFIX} Autocomplete: Attempting to initialize.`);
-
-    // Remove existing listener if present before potentially getting a new instance
-    if (state.autocompleteListener) {
-      google.maps.event.removeListener(state.autocompleteListener);
-      state.autocompleteListener = null;
-    }
-
-    const newAutocompleteInstance = await AutocompleteElement(SELECTORS.SHIP_TO_INPUT);
-
-    if (newAutocompleteInstance) {
-      state.autocomplete = newAutocompleteInstance;
-      state.autocompleteInput = currentShipToInput;
-
-      // Attach new listener for the legacy place_changed event
-      state.autocompleteListener = google.maps.event.addListener(state.autocomplete, 'place_changed', () => {
-        if (state.autocomplete) {
-          handlePlaceSelect(state.autocomplete, SELECTORS.SHIP_TO_CONTAINER, true);
-        }
-      });
-
-      console.log(`${LOG_PREFIX} Autocomplete: Place changed listener attached.`);
+    if (currentShipToInput) {
+      attachSandboxLauncher(currentShipToInput, SELECTORS.SHIP_TO_CONTAINER, true);
+    } else if (isShipToTabActive && retryCount < 5) {
+      setTimeout(() => initializeAutocomplete(retryCount + 1), 200);
+      return; // Return early, the retry will handle state.isInitializing
     } else {
-      // AutocompleteElement returned null (e.g., input not found, or error during init)
-      if (state.autocomplete || state.autocompleteInput) {
-        console.warn(`${LOG_PREFIX} Autocomplete: Could not initialize for input: ${SELECTORS.SHIP_TO_INPUT}. Clearing state.`);
-      } else {
-        console.warn(`${LOG_PREFIX} Autocomplete: Could not initialize for input: ${SELECTORS.SHIP_TO_INPUT}.`);
+      if (isShipToTabActive) {
+        console.warn(`${LOG_PREFIX} Sandbox: No visible input found to attach launcher after retries.`);
       }
-      state.autocomplete = null;
-      state.autocompleteInput = null;
-      state.autocompleteListener = null; // Ensure listener is null if init failed
     }
   } finally {
-    state.isInitializing = false;
+    if (retryCount === 0 || retryCount >= 5 || currentShipToInput) {
+      state.isInitializing = false;
+    }
   }
 };
 
-const hasShipToDesignData = (value: unknown): boolean => {
-  if (!value || typeof value !== 'object') return false;
+/**
+ * Determines if the response indicates the specified tab is active or being loaded.
+ */
+const isTabActive = (response: P21DesignResponse, tabName: string): boolean => {
+  if (!response) return false;
 
-  const response = value as P21DesignResponse;
+  const isTabDesigned = response.Result?.TabDefinition?.UniqueName === tabName;
+  const isTabSelected = response.Events?.some((e: any) => e.Name?.toLowerCase() === 'selectionchanged' && e.EventData?.tabpagename === tabName);
+  const hasTabData = response.Data && typeof response.Data === 'object' && Object.keys(response.Data).some((key) => key.startsWith(`${tabName}.`));
 
-  const isShipToTab = response.Result?.TabDefinition?.UniqueName === 'TP_SHIPTO' || response.Events?.some((e) => e.Name?.toLowerCase() === 'selectionchanged' && e.EventData?.tabpagename === 'TP_SHIPTO');
-
-  if (isShipToTab) return true;
-
-  const data = response.Data || response;
-  if (data && typeof data === 'object' && 'TP_SHIPTO.shipto' in data) return true;
-
-  return false;
-};
-
-const hasRemittanceData = (value: unknown): boolean => {
-  if (!value || typeof value !== 'object') return false;
-  const response = value as P21DesignResponse;
-
-  const isRemittanceTab = response.Result?.TabDefinition?.UniqueName === 'TP_REMITTANCES' || response.Events?.some((e) => e.Name?.toLowerCase() === 'selectionchanged' && e.EventData?.tabpagename === 'TP_REMITTANCES');
-
-  if (isRemittanceTab) return true;
-
-  const data = response.Data || response;
-  return data && typeof data === 'object' && 'TP_REMITTANCES.remittotals' in data;
+  return Boolean(isTabDesigned || isTabSelected || hasTabData);
 };
 
 window.addEventListener('p21-ext:xhr-response', (event) => {
@@ -168,11 +143,11 @@ window.addEventListener('p21-ext:xhr-response', (event) => {
 
   trackActiveContext(response, detail.url);
 
-  if (hasShipToDesignData(response)) {
+  if (isTabActive(response, 'TP_SHIPTO')) {
     setTimeout(() => initializeAutocomplete(), 100);
   }
 
-  if (hasRemittanceData(response)) {
+  if (isTabActive(response, 'TP_REMITTANCES')) {
     debouncedPaymentLink(500);
   }
 });
@@ -204,10 +179,17 @@ const paymentLink = async (): Promise<void> => {
 
     if (!orderElement || !paymentElement || !linkTextArea || !copyBtn || !emailBtn) return;
 
-    const orderRecord = (angular.element(orderElement).scope() as CustomScope)?.record as OrderRecord;
-    const paymentRecord = (angular.element(paymentElement).scope() as CustomScope)?.record as PaymentRecord;
+    const scope = await getP21Scope<CustomScope>(orderElement);
+    if (!scope) {
+      console.error(`${LOG_PREFIX} Failed to get Angular scope for paymentLink after retries.`);
+      return;
+    }
+
+    const orderRecord = scope.record as OrderRecord;
+    const paymentRecord = (angular.element(paymentElement).scope() as CustomScope)?.record as PaymentRecord; // Re-get payment record scope
 
     if (!orderRecord || !paymentRecord) {
+      // paymentRecord might still be null if paymentElement has no scope
       console.error(`${LOG_PREFIX} Required records are missing.`);
       return;
     }
@@ -259,9 +241,14 @@ const paymentLink = async (): Promise<void> => {
 initializeAutocomplete();
 paymentLink();
 
-// Watch for tab changes
-document.querySelector(SELECTORS.TAB_HEADER)?.addEventListener('click', () => {
-  setTimeout(() => initializeAutocomplete(), 250); // Re-evaluate autocomplete on tab change
-  // Larger delay for payment link to ensure records are loaded
-  setTimeout(() => paymentLink(), 2000);
+// Use the Action Monitor to detect UI interactions and tab changes
+window.addEventListener('p21-ext:action-monitor-event', (event: any) => {
+  const { name, source } = event.detail;
+
+  // React to DOM clicks or Angular selection broadcasts
+  if ((source === 'DOM' && name === 'click') || name?.includes('selectionchanged')) {
+    // Re-evaluate context with slight delays for Angular rendering
+    setTimeout(() => initializeAutocomplete(), 250);
+    setTimeout(() => paymentLink(), 1000);
+  }
 });

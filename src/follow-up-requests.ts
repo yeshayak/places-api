@@ -1,5 +1,5 @@
 import { type P21AutomationEvent, subscribeAutomationEvent } from './automation-rules';
-import type { ParsedP21Request } from './request-parser';
+import type { ParsedP21Request } from './utils/request-parser';
 
 export type FollowUpReason = 'pricing-recalculation' | 'related-item-update' | 'populate-defaults' | 'autocomplete-address-update' | 'custom';
 

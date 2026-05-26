@@ -1,5 +1,5 @@
 import { AutocompleteElement, handlePlaceSelect } from './autocomplete';
-import type { P21DesignResponse } from './p21-session';
+import type { P21DesignResponse } from './utils/p21-session';
 import { trackActiveContext } from './p21-data-endpoint';
 
 const LOG_PREFIX = '[P21 EXT]';
@@ -16,15 +16,19 @@ const state = {
   autocompleteAddressNameListener: null as google.maps.MapsEventListener | null,
   autocompleteAddress1: null as google.maps.places.Autocomplete | null,
   autocompleteAddress1Listener: null as google.maps.MapsEventListener | null,
+  isInitializing: false,
 };
 
 // Initialize Google Places Autocomplete
-const initializeAutocomplete = async (): Promise<void> => {
+const initializeAutocomplete = async (retryCount = 0): Promise<void> => {
+  if (state.isInitializing && retryCount === 0) return;
+
   const tabListHeader = document.querySelector(SELECTORS.TAB_HEADER);
   const activeTab = tabListHeader?.querySelector('.active') as HTMLElement;
   const isTabPage1Active = activeTab?.dataset.menuItem === 'TABPAGE_1';
 
   if (isTabPage1Active) {
+    state.isInitializing = true;
     console.log(`${LOG_PREFIX} Initializing Autocomplete for Ship To Sheet.`);
 
     // Autocomplete for Address Name
@@ -62,10 +66,13 @@ const initializeAutocomplete = async (): Promise<void> => {
 
       console.log(`${LOG_PREFIX} Autocomplete (Address1): Place changed listener attached.`);
     } else {
-      console.warn(`${LOG_PREFIX} Autocomplete (Address1): Could not initialize for input: ${SELECTORS.ADDRESS1_INPUT}.`);
-      state.autocompleteAddress1 = null;
-      state.autocompleteAddress1Listener = null;
+      if (retryCount < 5) {
+        setTimeout(() => initializeAutocomplete(retryCount + 1), 200);
+        return;
+      }
+      console.warn(`${LOG_PREFIX} Autocomplete (Address1): Failed after retries.`);
     }
+    state.isInitializing = false;
   }
 };
 

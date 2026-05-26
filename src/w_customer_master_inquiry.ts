@@ -1,6 +1,6 @@
-import { AutocompleteElement, handlePlaceSelect } from './autocomplete';
-import type { P21DesignResponse } from './p21-session';
-import { trackActiveContext } from './p21-data-endpoint';
+import { attachSandboxLauncher, openSandbox } from './sandbox-autocomplete';
+import type { P21DesignResponse } from './utils/p21-session';
+import { trackActiveContext, getP21Scope } from './p21-data-endpoint';
 
 type CustomerRecord = {
   customer_id: string;
@@ -13,7 +13,8 @@ const LOG_PREFIX = '[P21 EXT]';
 const SELECTORS = {
   TAB_HEADER: '#bottomSectionDiv ul',
   PHYSICAL_ADDRESS_INPUT: `[id*='physical_address.phys_address1']`,
-  PHYSICAL_ADDRESS_CONTAINER: '[id=physical_address]',
+  PHYSICAL_ADDRESS_CONTAINER: '[id="physical_address"], [id$="PHYSICAL_ADDRESS.physical_address"]',
+  PHYSICAL_ADDRESS_NAME_INPUT: '[id$="physical_address.name"]', // Assuming a name field for the address
   CUSTOMER_ID: `[id='customer.customer_id']`,
   PAYMENT_LINK_TEXT: `[id='tp_paymentaccount.cf_usersd8fc2']`,
   PAYMENT_COPY_BTN: `[id='tp_paymentaccount.cb_usersd4e72']`,
@@ -23,64 +24,56 @@ const SELECTORS = {
 type CustomerScope = AngularScope;
 
 const state = {
-  autocomplete: null as google.maps.places.Autocomplete | null,
-  autocompleteListener: null as google.maps.MapsEventListener | null,
   paymentListenersAttached: false,
   lastPaymentLink: '',
+  hotkeyBound: false,
 };
 
 /**
  * Find the currently visible and enabled Physical Address input field.
  */
-const findVisibleAddressInput = (): HTMLInputElement | null =>
-  Array.from(document.querySelectorAll<HTMLInputElement>(SELECTORS.PHYSICAL_ADDRESS_INPUT)).find((input) => !input.disabled && input.isConnected && input.getClientRects().length > 0) ?? null;
+const findVisibleAddressInput = (): HTMLInputElement | null => {
+  const allMatches = document.querySelectorAll<HTMLInputElement>(SELECTORS.PHYSICAL_ADDRESS_INPUT);
+  return Array.from(allMatches).find((input) => !input.disabled && input.isConnected && input.getClientRects().length > 0) ?? null;
+};
 
-// Initialize Google Places Autocomplete
-const initializeAutoComplete = async (): Promise<void> => {
+/**
+ * Initialize Google Places Autocomplete for the Physical Address tab.
+ */
+const initializeAutocomplete = async (retryCount = 0): Promise<void> => {
+  // Bind the Alt+A hotkey once
+  if (!state.hotkeyBound) {
+    window.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.altKey && e.key.toLowerCase() === 'a') {
+        const input = findVisibleAddressInput();
+        if (input) {
+          e.preventDefault();
+          openSandbox(SELECTORS.PHYSICAL_ADDRESS_CONTAINER, false); // Assuming no name field for CM Inquiry
+        }
+      }
+    });
+    state.hotkeyBound = true;
+  }
+
   const currentInput = findVisibleAddressInput();
   const tabListHeader = document.querySelector(SELECTORS.TAB_HEADER);
   const activeTab = tabListHeader?.querySelector('.active') as HTMLElement;
   const isPhysicalAddressTabActive = activeTab?.dataset.menuItem === 'PHYSICAL_ADDRESS';
 
-  // Scenario 1: Not on Physical Address tab and no input found. Clear state if any.
-  if (!isPhysicalAddressTabActive && !currentInput) {
-    if (state.autocomplete || state.autocompleteListener) {
-      console.log(`${LOG_PREFIX} Autocomplete: Clearing state as Physical Address tab is not active.`);
-      if (state.autocompleteListener) {
-        google.maps.event.removeListener(state.autocompleteListener);
-      }
-      state.autocomplete = null;
-      state.autocompleteListener = null;
+  if (currentInput) {
+    attachSandboxLauncher(currentInput, SELECTORS.PHYSICAL_ADDRESS_CONTAINER, false); // Assuming no name field for CM Inquiry
+    // Also attach to the name field if it exists
+    const nameInput = document.querySelector<HTMLInputElement>(SELECTORS.PHYSICAL_ADDRESS_NAME_INPUT);
+    if (nameInput) {
+      attachSandboxLauncher(nameInput, SELECTORS.PHYSICAL_ADDRESS_CONTAINER, true);
     }
+  } else if (isPhysicalAddressTabActive && retryCount < 5) {
+    console.log(`${LOG_PREFIX} Physical Address tab active but input not ready. Retrying... (${retryCount + 1}/5)`);
+    setTimeout(() => initializeAutocomplete(retryCount + 1), 200);
     return;
-  }
-
-  // Scenario 2: Autocomplete is already correctly set up for the current context.
-  if (state.autocomplete && state.autocompleteListener) {
-    return;
-  }
-
-  // Scenario 3: Need to initialize or re-initialize.
-  if (isPhysicalAddressTabActive || currentInput) {
-    console.log(`${LOG_PREFIX} Autocomplete: Attempting to initialize.`);
-
-    if (state.autocompleteListener) {
-      google.maps.event.removeListener(state.autocompleteListener);
-      state.autocompleteListener = null;
-    }
-
-    state.autocomplete = await AutocompleteElement(SELECTORS.PHYSICAL_ADDRESS_INPUT);
-
-    if (state.autocomplete) {
-      state.autocompleteListener = google.maps.event.addListener(state.autocomplete, 'place_changed', () => {
-        // eslint-disable-line @typescript-eslint/no-non-null-assertion
-        handlePlaceSelect(state.autocomplete!, SELECTORS.PHYSICAL_ADDRESS_CONTAINER, false);
-      });
-      console.log(`${LOG_PREFIX} Autocomplete: Place changed listener attached for Inquiry.`);
-    } else {
-      console.warn(`${LOG_PREFIX} Autocomplete: Could not initialize for input: ${SELECTORS.PHYSICAL_ADDRESS_INPUT}.`);
-      state.autocomplete = null;
-      state.autocompleteListener = null;
+  } else {
+    if (isPhysicalAddressTabActive) {
+      console.warn(`${LOG_PREFIX} Sandbox: No visible input found to attach launcher after retries.`);
     }
   }
 };
@@ -97,8 +90,8 @@ const paymentLink = async (): Promise<void> => {
   if (!customerElement || !linkTextArea || !copyBtn || !emailBtn) return;
 
   if (activeTab?.dataset.menuItem === 'TP_PAYMENTACCOUNT') {
-    const customerScope = angular.element(customerElement).scope() as CustomerScope;
-    const customerRecord = customerScope?.record as CustomerRecord;
+    const scope = await getP21Scope<CustomerScope>(customerElement);
+    const customerRecord = scope?.record as CustomerRecord;
 
     if (!customerRecord) {
       console.error(`${LOG_PREFIX} Customer record not found.`);
@@ -157,16 +150,16 @@ window.addEventListener('p21-ext:xhr-response', (event) => {
   const isPhysicalAddressRelated = response?.Result?.TabDefinition?.UniqueName === 'PHYSICAL_ADDRESS' || response?.Events?.some((e) => e.Name?.toLowerCase() === 'selectionchanged' && e.EventData?.tabpagename === 'PHYSICAL_ADDRESS');
 
   if (isPhysicalAddressRelated) {
-    setTimeout(() => initializeAutoComplete(), 100);
+    setTimeout(() => initializeAutocomplete(), 100);
   }
 });
 
 // Initialize Functions
-initializeAutoComplete();
+initializeAutocomplete();
 paymentLink();
 
 // Add Event Listeners
 document.querySelector(SELECTORS.TAB_HEADER)?.addEventListener('click', () => {
-  setTimeout(() => initializeAutoComplete(), 250); // Re-evaluate autocomplete on tab change
+  setTimeout(() => initializeAutocomplete(), 250); // Re-evaluate autocomplete on tab change
   setTimeout(() => paymentLink(), 1000); // Allow time for records to load
 });

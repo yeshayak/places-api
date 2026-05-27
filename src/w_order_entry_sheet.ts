@@ -1,6 +1,5 @@
-import { attachSandboxLauncher, openSandbox } from './sandbox-autocomplete';
 import type { P21DesignResponse } from './utils/p21-session';
-import { trackActiveContext, getP21Scope } from './p21-data-endpoint';
+import { getP21Scope, getActiveTabName, discoverAndAttachAddressUI } from './p21-data-endpoint';
 
 // Using global AngularScope
 type CustomScope = AngularScope;
@@ -8,9 +7,6 @@ type CustomScope = AngularScope;
 const LOG_PREFIX = '[P21 EXT]';
 
 const SELECTORS = {
-  TAB_HEADER: '#p21TabsetDir ul',
-  SHIP_TO_INPUT: '[id$="shipto.ship_to_name"], [id$="ship_to_name"]',
-  SHIP_TO_CONTAINER: '[id="shipto"], [id$="TP_SHIPTO.shipto"], [id*="TP_SHIPTO.shipto."]',
   CUSTOMER_ID: '[id="order.customer_id"]',
   ORDER_NO: '[id="order.order_no"]',
   BALANCE: '[id="remittotals.cf_balance"]',
@@ -26,8 +22,6 @@ const state = {
   paymentListenersAttached: false,
   lastPaymentLink: '',
   paymentLinkTimeout: null as number | null,
-  isInitializing: false,
-  hotkeyBound: false,
 };
 
 interface OrderRecord {
@@ -50,89 +44,6 @@ interface CustomerRecord {
   email_address?: string;
 }
 
-/**
- * Find the currently visible and enabled Ship To Name input field.
- */
-const findVisibleShipToNameInput = (): HTMLInputElement | null => {
-  const allMatches = document.querySelectorAll<HTMLInputElement>(SELECTORS.SHIP_TO_INPUT);
-
-  // Debug: Log if we found elements but they were filtered out
-  if (allMatches.length > 0) {
-    const visible = Array.from(allMatches).find((input) => {
-      const isVisible = input.getClientRects().length > 0;
-      const isEnabled = !input.disabled;
-      const isConnected = input.isConnected;
-      return isVisible && isEnabled && isConnected;
-    });
-
-    if (!visible) {
-      console.log(`${LOG_PREFIX} Found ${allMatches.length} inputs matching selector, but none passed visibility/enabled checks.`);
-    }
-    return visible ?? null;
-  }
-
-  return null;
-};
-
-/**
- * Initialize Google Places Autocomplete for the Ship To tab.
- */
-const initializeAutocomplete = async (retryCount = 0): Promise<void> => {
-  if (state.isInitializing) return;
-
-  let currentShipToInput: HTMLInputElement | null = null;
-  try {
-    if (retryCount === 0) state.isInitializing = true;
-
-    // Bind the Alt+A hotkey once
-    if (!state.hotkeyBound) {
-      window.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.altKey && e.key.toLowerCase() === 'a') {
-          const input = findVisibleShipToNameInput();
-          if (input) {
-            e.preventDefault();
-            openSandbox(SELECTORS.SHIP_TO_CONTAINER, true);
-          }
-        }
-      });
-      state.hotkeyBound = true;
-    }
-
-    currentShipToInput = findVisibleShipToNameInput();
-    const tabListHeader = document.querySelector(SELECTORS.TAB_HEADER);
-    const activeTab = tabListHeader?.querySelector('.active') as HTMLElement;
-    const isShipToTabActive = activeTab?.dataset.menuItem === 'TP_SHIPTO';
-
-    if (currentShipToInput) {
-      attachSandboxLauncher(currentShipToInput, SELECTORS.SHIP_TO_CONTAINER, true);
-    } else if (isShipToTabActive && retryCount < 5) {
-      setTimeout(() => initializeAutocomplete(retryCount + 1), 200);
-      return; // Return early, the retry will handle state.isInitializing
-    } else {
-      if (isShipToTabActive) {
-        console.warn(`${LOG_PREFIX} Sandbox: No visible input found to attach launcher after retries.`);
-      }
-    }
-  } finally {
-    if (retryCount === 0 || retryCount >= 5 || currentShipToInput) {
-      state.isInitializing = false;
-    }
-  }
-};
-
-/**
- * Determines if the response indicates the specified tab is active or being loaded.
- */
-const isTabActive = (response: P21DesignResponse, tabName: string): boolean => {
-  if (!response) return false;
-
-  const isTabDesigned = response.Result?.TabDefinition?.UniqueName === tabName;
-  const isTabSelected = response.Events?.some((e: any) => e.Name?.toLowerCase() === 'selectionchanged' && e.EventData?.tabpagename === tabName);
-  const hasTabData = response.Data && typeof response.Data === 'object' && Object.keys(response.Data).some((key) => key.startsWith(`${tabName}.`));
-
-  return Boolean(isTabDesigned || isTabSelected || hasTabData);
-};
-
 window.addEventListener('p21-ext:xhr-response', (event) => {
   const detail = (event as CustomEvent<{ responseValue?: unknown; url: string; method: string }>).detail;
   const response = detail.responseValue as P21DesignResponse;
@@ -141,13 +52,10 @@ window.addEventListener('p21-ext:xhr-response', (event) => {
   // Only react to GET/POST (Design/Load) requests.
   if (detail.method === 'PUT' || detail.method === 'PATCH') return;
 
-  trackActiveContext(response, detail.url);
+  // Tab identification for payment link still needs a way to detect remittances tab reliably
+  const isRemittanceTab = response?.Result?.TabDefinition?.UniqueName === 'TP_REMITTANCES' || response?.Events?.some((e: any) => e.Name?.toLowerCase() === 'selectionchanged' && e.EventData?.tabpagename === 'TP_REMITTANCES');
 
-  if (isTabActive(response, 'TP_SHIPTO')) {
-    setTimeout(() => initializeAutocomplete(), 100);
-  }
-
-  if (isTabActive(response, 'TP_REMITTANCES')) {
+  if (isRemittanceTab) {
     debouncedPaymentLink(500);
   }
 });
@@ -164,11 +72,8 @@ const debouncedPaymentLink = (delay: number): void => {
  * Update UI with payment link details and attach handlers once.
  */
 const paymentLink = async (): Promise<void> => {
-  const tabListHeader = document.querySelector(SELECTORS.TAB_HEADER);
-  const activeTab = tabListHeader?.querySelector('.active, [aria-selected="true"]') as HTMLElement;
-
-  // Check if we are on the Remittances tab or if the elements are simply present
-  if (activeTab?.dataset.menuItem === 'TP_REMITTANCES' || document.querySelector(SELECTORS.PAYMENT_LINK_TEXT)) {
+  // Check if the XHR context confirms we are on the Remittances tab
+  if (getActiveTabName() === 'TP_REMITTANCES') {
     console.log(`${LOG_PREFIX} Initializing Payment Link`);
 
     const orderElement = document.querySelector(SELECTORS.ORDER_NO);
@@ -238,17 +143,15 @@ const paymentLink = async (): Promise<void> => {
 };
 
 // Initialize Functions
-initializeAutocomplete();
 paymentLink();
+discoverAndAttachAddressUI();
 
 // Use the Action Monitor to detect UI interactions and tab changes
 window.addEventListener('p21-ext:action-monitor-event', (event: any) => {
-  const { name, source } = event.detail;
+  const { name } = event.detail;
 
   // React to DOM clicks or Angular selection broadcasts
-  if ((source === 'DOM' && name === 'click') || name?.includes('selectionchanged')) {
-    // Re-evaluate context with slight delays for Angular rendering
-    setTimeout(() => initializeAutocomplete(), 250);
+  if (name?.includes('selectionchanged')) {
     setTimeout(() => paymentLink(), 1000);
   }
 });

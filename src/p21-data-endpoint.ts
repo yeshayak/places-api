@@ -1,5 +1,6 @@
 /// <reference types="angular" />
 import type { P21DesignResponse, P21DataWindowProperties, P21FieldProperty } from './utils/p21-session';
+import { attachSandboxLauncher, openSandbox } from './sandbox-autocomplete';
 
 export interface P21FieldUpdate {
   dwName: string;
@@ -46,6 +47,8 @@ const state = {
   activeContext: {} as P21ActiveContext,
   dataWindowSchemas: new Map<string, Set<string>>(),
   allDataWindows: new Map<string, Record<string, unknown>[]>(), // Stores all DataWindows from the last design response
+  isInitializingUI: false,
+  hotkeyBound: false,
   // Map: windowName -> DataWindowFieldMetadataMap
   windowFieldProperties: new Map<string, DataWindowFieldMetadataMap>(), // New state to store field properties
 };
@@ -54,14 +57,8 @@ const LOG_PREFIX = '[P21 EXT]';
 const isDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebug') === 'true';
 const isFullDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebugFull') === 'true';
 
-const ADDRESS_COMPONENT_FIELD_CANDIDATES: Record<keyof P21AddressUpdateValue, string[]> = {
-  name: ['ship_to_name', 'address_name', 'customer_name', 'name'],
-  address1: ['phys_address1', 'mail_address1', 'address1'],
-  address2: ['phys_address2', 'mail_address2', 'address2'],
-  city: ['phys_city', 'mail_city', 'city'],
-  state: ['phys_state', 'mail_state', 'state'],
-  postal_code: ['phys_postal_code', 'mail_postal_code', 'postal_code', 'zip_code', 'zip'],
-};
+const ADDR1_REGEX = /[a-z0-9_]*address1$/i;
+const ADDR_NAME_REGEX = /[a-z0-9_]*(customer_name|address_name|ship_to_name|ship_to_id_name|^name)$/i;
 const dataEndpointWindow = window as P21DataEndpointWindow;
 
 /**
@@ -72,7 +69,7 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
 
   // Only clear metadata when receiving a fresh design or data-information response.
   // Incremental data updates (PUT/PATCH) must preserve existing schemas and records.
-  const isDesign = url.includes('/design') || Boolean(response.Result) || Boolean(response.DataInformation);
+  const isDesign = url.includes('/design') || url.includes('/Quick.Clear') || url.includes('/Quick.Save') || Boolean(response.Result) || Boolean(response.DataInformation);
   if (isDesign) {
     state.activeContext = {};
     state.dataWindowSchemas.clear();
@@ -118,13 +115,37 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
     });
   }
 
-  // 4. Track Active Context (Tab and DataWindow) from Data or DataInformation
-  const contextSource = Data || DataInformation || {}; // Prioritize Data, then DataInformation
-  const relevantKey = Object.keys(contextSource).find((key) => key.includes('.')); // Find a key with dot notation
+  // 4. Track Active Context (Tab and DataWindow) - More robust extraction
+
+  // Extract tabName
+  if (Result?.TabDefinition?.UniqueName) {
+    state.activeContext.tabName = Result.TabDefinition.UniqueName;
+  } else {
+    // Fallback to Data/DataInformation keys if TabDefinition is not present
+    const contextSource = Data || DataInformation || {};
+    const relevantKey = Object.keys(contextSource).find((key) => key.includes('.'));
+    if (relevantKey) {
+      const [tn] = relevantKey.split('.');
+      state.activeContext.tabName = tn;
+    }
+  }
+
+  // Extract dataWindow
+  // Prioritize from Data/DataInformation keys as this directly relates to what's in state.dataWindowSchemas
+  const contextSource = Data || DataInformation || {};
+  const relevantKey = Object.keys(contextSource).find((key) => key.includes('.'));
   if (relevantKey) {
-    const [tn, dw] = relevantKey.split('.');
-    state.activeContext.tabName = tn;
+    const [, dw] = relevantKey.split('.');
     state.activeContext.dataWindow = dw;
+  }
+
+  // Fallback to Result.TabDefinition.Sections if not found in Data/DataInformation
+  if (!state.activeContext.dataWindow && Result?.TabDefinition?.Sections) {
+    // Find the first section that has a Dataobject or Name
+    const primarySection = Result.TabDefinition.Sections.find((s) => s.Dataobject || s.Name);
+    if (primarySection) {
+      state.activeContext.dataWindow = primarySection.Dataobject || primarySection.Name;
+    }
   }
 
   // 5. Process field properties (visibility, enabled state, etc.)
@@ -134,7 +155,16 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
   if (Result?.Properties) {
     Object.values(Result.Properties).forEach(processDataWindowProperties);
   }
+
+  if (isDebugEnabled() || isFullDebugEnabled()) {
+    console.log(LOG_PREFIX, 'Active Context Updated:', state.activeContext);
+  }
 };
+
+/**
+ * Returns the currently active tab name tracked from XHR context.
+ */
+export const getActiveTabName = (): string | undefined => state.activeContext.tabName;
 
 /**
  * Retrieves a specific DataWindow's data from the last processed design response.
@@ -179,6 +209,218 @@ export const getP21Scope = async <T = any>(selector: string | Element, maxRetrie
   }
   return null;
 };
+
+/**
+ * Checks if the given response contains data or events related to address fields.
+ */
+export const isAddressRelated = (response: P21DesignResponse): boolean => {
+  if (!response) return false;
+
+  // Check if any DataWindow in the response contains address1 candidates
+  const hasAddressData = response.Data && Object.values(response.Data).some((rows) => Array.isArray(rows) && rows.length > 0 && rows[0] && Object.keys(rows[0]).some((k) => ADDR1_REGEX.test(k)));
+
+  // Check if any Events mention address1 candidates in property updates
+  const hasAddressEvents = response.Events?.some((e) => ADDR1_REGEX.test(e.EventData?.dwproperty_column || ''));
+
+  return !!(hasAddressData || hasAddressEvents);
+};
+
+/**
+ * Checks if the currently active UI context is known to have address fields based on tracked schemas.
+ */
+export const isAddressContextActive = (): boolean => {
+  const { tabName, dataWindow } = state.activeContext;
+  if (!tabName || !dataWindow) return false;
+
+  const schema = state.dataWindowSchemas.get(`${tabName}.${dataWindow}`);
+  return !!schema && Array.from(schema).some((c) => ADDR1_REGEX.test(c));
+};
+
+/**
+ * Checks if a field is considered enabled based on DOM properties and P21 metadata.
+ */
+export const isFieldEnabled = (element: HTMLElement): boolean => {
+  if (!element) return false;
+  if (!(element instanceof HTMLInputElement) && !(element instanceof HTMLTextAreaElement)) return false;
+  if (element.disabled || element.readOnly) return false;
+
+  if (element.id && element.id.includes('.')) {
+    const parts = element.id.split('.');
+    const fieldName = parts[parts.length - 1];
+    const dwName = parts.slice(0, -1).join('.');
+
+    if (dwName) {
+      const metadata = getFieldMetadata(dwName, fieldName);
+      if (metadata && !metadata.enabled) return false;
+    }
+  }
+
+  return true;
+};
+
+/**
+ * Standardized utility to resolve a container selector from an input element.
+ */
+export const getContainerSelector = (element: HTMLElement): string => {
+  if (element.id && element.id.includes('.')) {
+    const parts = element.id.split('.');
+    const dwName = parts.slice(0, -1).join('.'); // Everything before the last dot is the DataWindow name
+    return `[id="${dwName}"]`;
+  }
+  return '';
+};
+
+/**
+ * Global discovery: finds address-related inputs and attaches search launchers.
+ */
+export const discoverAndAttachAddressUI = async (retryCount = 0): Promise<void> => {
+  if (state.isInitializingUI) return;
+
+  try {
+    state.isInitializingUI = true;
+
+    // DOM Context Recovery: If XHR monitor hasn't established context yet (e.g., initial load),
+    // try to infer it from the DOM to enable features that depend on window or tab names.
+    if (!state.activeContext.windowName || !state.activeContext.tabName) {
+      const contextEl = document.querySelector('[window_classname]');
+      if (contextEl && !state.activeContext.windowName) {
+        state.activeContext.windowName = contextEl.getAttribute('window_classname') || undefined;
+      }
+      const activeTab = document.querySelector('.active[data-menu-item], [aria-selected="true"][data-menu-item]') as HTMLElement;
+      if (activeTab && activeTab.dataset.menuItem && !state.activeContext.tabName) {
+        state.activeContext.tabName = activeTab.dataset.menuItem;
+      }
+    }
+
+    // Global Hotkey Binding (Alt+A)
+    if (!state.hotkeyBound) {
+      window.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.altKey && e.key.toLowerCase() === 'a') {
+          const anchor = findAnchorInput();
+          if (anchor) {
+            e.preventDefault();
+            const container = getContainerSelector(anchor);
+            openSandbox(container, !anchor.id.toLowerCase().includes('address1'));
+          }
+        }
+      });
+      state.hotkeyBound = true;
+    }
+
+    const anchor = findAnchorInput();
+
+    // DOM Fallback Logic:
+    // We attach if we found an anchor via XHR-Discovery OR if we found one via DOM-Discovery.
+    // If we have network schemas, we use them to confirm. Otherwise (initial load),
+    // we trust the anchor found by regex patterns in the DOM.
+    if (anchor && (isAddressContextActive() || state.dataWindowSchemas.size === 0)) {
+      const container = getContainerSelector(anchor);
+
+      // Attach to name field (with includeName = true)
+      if (ADDR_NAME_REGEX.test(anchor.id)) {
+        attachSandboxLauncher(anchor as HTMLInputElement, container, true);
+
+        // Also find the sibling address1 field to provide a second entry point
+        const addr1 = Array.from(document.querySelectorAll('input')).find((i) => ADDR1_REGEX.test(i.id) && i.isConnected && i.getClientRects().length > 0);
+        if (addr1) attachSandboxLauncher(addr1, container, false);
+      } else {
+        // Attached directly to address1
+        attachSandboxLauncher(anchor as HTMLInputElement, container, false);
+      }
+    } else if ((isAddressContextActive() || state.dataWindowSchemas.size === 0) && retryCount < 15) {
+      // Retry discovery if elements aren't ready yet, even without XHR context.
+      setTimeout(() => discoverAndAttachAddressUI(retryCount + 1), 300);
+    }
+  } finally {
+    state.isInitializingUI = false;
+  }
+};
+
+/**
+ * Internal helper to find the best candidate for an address anchor.
+ */
+const findAnchorInput = (): HTMLElement | null => {
+  if (isDebugEnabled()) console.log(LOG_PREFIX, 'Attempting to find anchor input...');
+
+  // 1. XHR-Prioritized Discovery: Use server-reported active context to find precise elements
+  const { tabName, dataWindow } = state.activeContext;
+  if (tabName && dataWindow) {
+    if (isDebugEnabled()) console.log(LOG_PREFIX, `XHR context active: tabName=${tabName}, dataWindow=${dataWindow}`);
+    const fullDwName = `${tabName}.${dataWindow}`;
+    const schema = state.dataWindowSchemas.get(fullDwName);
+    if (schema) {
+      if (isDebugEnabled()) console.log(LOG_PREFIX, `Schema found for ${fullDwName}. Fields:`, Array.from(schema));
+      // Use regex to find the best anchor field name directly from the schema keys
+      const anchorFieldName = Array.from(schema).find((f) => ADDR_NAME_REGEX.test(f) || ADDR1_REGEX.test(f));
+      if (anchorFieldName) {
+        if (isDebugEnabled()) console.log(LOG_PREFIX, `Anchor field name identified from schema: ${anchorFieldName}`);
+        const preciseId = `${fullDwName}.${anchorFieldName}`;
+        let el = document.getElementById(preciseId);
+        if (isDebugEnabled()) console.log(LOG_PREFIX, `Attempting to find element by precise ID: ${preciseId}. Found:`, !!el);
+        if (!el) {
+          const dwContainer = document.querySelector(`[id="${fullDwName}"]`);
+          if (isDebugEnabled()) console.log(LOG_PREFIX, `Direct ID not found. Searching within container [id="${fullDwName}"]. Found container:`, !!dwContainer);
+          el = dwContainer?.querySelector(`input[id$=".${anchorFieldName}"]`) as HTMLElement;
+          if (isDebugEnabled()) console.log(LOG_PREFIX, `Found element within container:`, !!el);
+        }
+        if (el instanceof HTMLInputElement && isFieldEnabled(el) && el.isConnected && el.getClientRects().length > 0) {
+          if (isDebugEnabled()) console.log(LOG_PREFIX, `XHR-prioritized anchor input found and enabled:`, el);
+          return el;
+        } else if (isDebugEnabled()) {
+          console.log(LOG_PREFIX, `XHR-prioritized element found but not usable:`, el, `isFieldEnabled=${isFieldEnabled(el)}`, `isConnected=${el?.isConnected}`, `getClientRects().length=${el?.getClientRects().length}`);
+        }
+      } else if (isDebugEnabled()) {
+        console.log(LOG_PREFIX, `No anchor field name found in schema for ${fullDwName} using ADDR_NAME_REGEX or ADDR1_REGEX.`);
+      }
+    } else if (isDebugEnabled()) {
+      console.log(LOG_PREFIX, `No schema found for ${fullDwName}.`);
+    }
+  } else if (isDebugEnabled()) {
+    console.log(LOG_PREFIX, `No active XHR context (tabName or dataWindow missing). Falling back to DOM scan.`);
+  }
+
+  // 2. DOM-based Fallback: Scan for fields using regex patterns if XHR metadata is unavailable
+  const allInputs = Array.from(document.querySelectorAll('input'));
+  const nameInput = allInputs.find((i) => ADDR_NAME_REGEX.test(i.id) && isFieldEnabled(i) && i.isConnected && i.getClientRects().length > 0);
+  if (nameInput) return nameInput;
+
+  return allInputs.find((i) => ADDR1_REGEX.test(i.id) && isFieldEnabled(i) && i.isConnected && i.getClientRects().length > 0) ?? null;
+};
+
+// --- Global Event Orchestration ---
+
+// Listen for XHR responses to trigger UI discovery
+window.addEventListener('p21-ext:xhr-response', (event) => {
+  const detail = (event as CustomEvent<{ responseValue?: unknown; url: string; method: string }>).detail;
+  const response = detail.responseValue as P21DesignResponse;
+
+  // Safety guard: ensure we have a valid object to inspect.
+  if (!response || typeof response !== 'object' || Array.isArray(response)) return;
+
+  if (detail.method === 'PUT' || detail.method === 'PATCH') return;
+
+  trackActiveContext(response, detail.url);
+
+  // Structural actions (Clear, Save, Design) cause heavy DOM churn.
+  const isStructuralRescan = detail.url.includes('Quick.Clear') || detail.url.includes('Quick.Save') || detail.url.includes('/design') || Boolean(response.Result) || Boolean(response.DataInformation);
+
+  if (isAddressRelated(response) || isStructuralRescan || detail.url.includes('/history')) {
+    if (isStructuralRescan) {
+      // Structural resets take longer to finalize in the DOM than incremental data loads.
+      setTimeout(() => discoverAndAttachAddressUI(), 300);
+    } else {
+      discoverAndAttachAddressUI();
+    }
+  }
+});
+
+// Listen for Action Monitor events (Tab changes)
+window.addEventListener('p21-ext:action-monitor-event', (event: any) => {
+  const { name } = event.detail;
+  if (name?.includes('selectionchanged')) {
+    discoverAndAttachAddressUI(); // Removed delay for immediate response
+  }
+});
 
 // New helper to get field metadata
 export const getFieldMetadata = (fullDwName: string, fieldName: string): FieldMetadata | undefined => {
@@ -278,25 +520,21 @@ const processDataWindowProperties = (propertiesContainer: P21DataWindowPropertie
 export const buildAddressUpdates = (containerSelector: string, place: P21AddressUpdateValue, includeName: boolean): P21FieldUpdate[] => {
   // Identify a preferred DataWindow path from the container's DOM ID or selector string.
   let preferredDwPath = '';
-  const containerElement = document.querySelector(containerSelector);
-
-  if (containerElement?.id && containerElement.id.includes('.')) {
-    // ID usually looks like "TP_SHIPTO.shipto" or "TP_SHIPTO.shipto.phys_address1"
-    const parts = containerElement.id.split('.');
-    preferredDwPath = `${parts[0]}.${parts[1]}`;
-  } else {
-    const dotMatch = containerSelector.match(/([A-Za-z0-9_]+\.[A-Za-z0-9_]+)/);
-    if (dotMatch) preferredDwPath = dotMatch[0];
+  // The containerSelector is expected to be like `[id="TP_SHIPTO.shipto"]` or `[id="shipto"]`
+  // We extract the ID directly from the selector string.
+  const idMatch = containerSelector.match(/\[id="([^"]+)"\]/);
+  if (idMatch && idMatch[1]) {
+    preferredDwPath = idMatch[1]; // This extracts "TP_SHIPTO.shipto" or "shipto"
   }
 
   // Strategy: Identify the target DataWindow by looking for the existence of an "address1" field.
   // This helps distinguish between header DataWindows (like 'order') and actual address records.
-  const address1Candidates = getAddressFieldCandidates('address1');
   let targetDwPath = '';
+  const findAddr1 = (s: Set<string>) => Array.from(s).find((f) => ADDR1_REGEX.test(f));
 
   if (preferredDwPath && state.dataWindowSchemas.has(preferredDwPath)) {
     const schema = state.dataWindowSchemas.get(preferredDwPath)!;
-    if (address1Candidates.some((c) => schema.has(c))) {
+    if (findAddr1(schema)) {
       targetDwPath = preferredDwPath;
     }
   }
@@ -304,25 +542,77 @@ export const buildAddressUpdates = (containerSelector: string, place: P21Address
   if (!targetDwPath) {
     const trackedSchemas = Array.from(state.dataWindowSchemas.entries()).reverse();
     for (const [dwPath, schema] of trackedSchemas) {
-      if (address1Candidates.some((c) => schema.has(c))) {
+      if (findAddr1(schema)) {
         targetDwPath = dwPath;
         break;
       }
     }
   }
 
-  if (!targetDwPath && state.activeContext.dataWindow) {
-    targetDwPath = state.activeContext.tabName ? `${state.activeContext.tabName}.${state.activeContext.dataWindow}` : state.activeContext.dataWindow;
+  if (!targetDwPath) {
+    if (state.activeContext.dataWindow) {
+      targetDwPath = state.activeContext.tabName ? `${state.activeContext.tabName}.${state.activeContext.dataWindow}` : state.activeContext.dataWindow;
+    } else if (preferredDwPath) {
+      targetDwPath = preferredDwPath;
+    }
+  }
+
+  // Extract prefix from the identified address1 field in the target schema
+  const targetSchema = targetDwPath ? state.dataWindowSchemas.get(targetDwPath) : undefined;
+  let prefix = '';
+  if (targetSchema) {
+    const addr1Field = findAddr1(targetSchema);
+    if (addr1Field) {
+      // If field is 'ship_to_address1', prefix is 'ship_to_'
+      prefix = addr1Field.toLowerCase().replace('address1', '');
+    }
+  } else if (containerSelector) {
+    // DOM-based prefix discovery fallback (useful for initial load before schemas are captured)
+    const container = document.querySelector(containerSelector);
+    const addr1El = container?.querySelector('input[id*="address1"]');
+    if (addr1El && addr1El.id) {
+      const idParts = addr1El.id.split('.');
+      const fieldName = idParts[idParts.length - 1];
+      prefix = fieldName.toLowerCase().replace('address1', '');
+    }
   }
 
   return Object.entries(place)
     .filter(([component, value]) => value && (component !== 'name' || includeName))
     .map(([component, value]) => {
-      const candidates = getAddressFieldCandidates(component);
-      const schema = targetDwPath ? state.dataWindowSchemas.get(targetDwPath) : undefined;
+      const suffix = component === 'postal_code' ? 'postal_code' : component === 'name' ? 'address_name' : component;
+      const altSuffix = component === 'postal_code' ? 'zip' : component === 'name' ? 'name' : '';
 
-      // Use the candidate found in the target schema, or fallback to first candidate
-      const fieldName = schema ? candidates.find((c) => schema.has(c)) || candidates[0] : candidates[0];
+      // Generate a prioritized list of potential Prophet 21 field names
+      const candidates = [
+        prefix + suffix, // e.g., phys_postal_code
+        suffix, // e.g., address_name (P21 names often ignore the prefix)
+        prefix + component, // e.g., phys_postal_code (if suffix and component differ)
+        component, // e.g., postal_code
+      ];
+
+      if (altSuffix) {
+        candidates.push(prefix + altSuffix); // e.g., phys_zip
+        candidates.push(altSuffix); // e.g., zip
+      }
+
+      // Remove duplicates from candidates
+      const uniqueCandidates = Array.from(new Set(candidates));
+
+      let fieldName: string;
+      if (targetSchema) {
+        // Strategy A: Use server-side schema metadata
+        fieldName = uniqueCandidates.find((c) => targetSchema.has(c)) || Array.from(targetSchema).find((f) => f.toLowerCase().endsWith(suffix) || f.toLowerCase().endsWith(component)) || uniqueCandidates[0];
+      } else {
+        // Strategy B: DOM Probe (Fallback for initial loads)
+        // Check which candidate actually exists in the current DOM
+        fieldName =
+          uniqueCandidates.find((c) => {
+            const fullId = `${targetDwPath}.${c}`;
+            const el = document.getElementById(fullId) || document.querySelector(`input[id$=".${c}"], [data-key$=".${c}"]`);
+            return !!el;
+          }) || uniqueCandidates[0];
+      }
 
       return {
         dwName: targetDwPath,
@@ -359,12 +649,15 @@ export const triggerFieldUpdates = async (fields: P21FieldUpdate[], containerSel
 
   for (let i = 0; i < fields.length; i++) {
     const field = fields[i];
-    // Construct selector to find the specific field.
-    // Prophet 21 usually suffixes IDs or data-keys with the field name.
-    const fieldSelector = `[id$=".${field.fieldName}"], [id="${field.fieldName}"], [data-key$=".${field.fieldName}"]`;
-    const element = containerSelector ? document.querySelector(containerSelector)?.querySelector(fieldSelector) : document.querySelector(fieldSelector);
+    const targetId = `${field.dwName}.${field.fieldName}`;
 
-    if (element instanceof HTMLElement && !(element as any).disabled && !(element as any).readOnly) {
+    // Combine dwName and fieldName for higher specificity as P21 IDs often follow 'dwName.fieldName'
+    const fieldSelector = `[id="${targetId}"], [id$=".${field.fieldName}"], [id="${field.fieldName}"], [data-key$="${targetId}"]`;
+
+    const container = containerSelector ? document.querySelector(containerSelector) : null;
+    const element = container?.querySelector(fieldSelector) || document.querySelector(fieldSelector);
+
+    if (element instanceof HTMLElement && isFieldEnabled(element)) {
       // Skip if value is already correct to reduce P21 sync noise
       if (element instanceof HTMLInputElement && element.value === field.value) {
         continue;
@@ -380,7 +673,7 @@ export const triggerFieldUpdates = async (fields: P21FieldUpdate[], containerSel
       element.focus();
       if (jQuery) {
         const $el = jQuery(element);
-        $el.trigger('focus').trigger('mouseenter').trigger('mousedown');
+        $el.trigger('focus');
       }
 
       // Update value
@@ -398,7 +691,7 @@ export const triggerFieldUpdates = async (fields: P21FieldUpdate[], containerSel
         element.dispatchEvent(new Event('blur', { bubbles: true }));
       }
     } else {
-      console.warn(LOG_PREFIX, `Field ${field.fieldName} not found, disabled, or read-only. Skipping.`);
+      console.warn(LOG_PREFIX, `Field "${targetId}" not found, disabled, or read-only. Skipping. (Selector: ${fieldSelector}, Container: ${containerSelector})`);
     }
 
     // P21's internal synchronization logic is sensitive to rapid-fire updates.
@@ -456,11 +749,4 @@ if (dataEndpointWindow.__p21DataEndpoint) {
   // This part will be called by the XHR monitor when a response comes in.
   // The trackActiveContext function will then call processDataWindowProperties internally.
   // No need to call it directly here.
-}
-
-const getAddressFieldCandidates = (component: string): string[] => ADDRESS_COMPONENT_FIELD_CANDIDATES[component as keyof P21AddressUpdateValue] ?? [component];
-
-// Initial processing of properties if available (e.g., for initial page load)
-if (dataEndpointWindow.__p21DataEndpoint) {
-  // This is handled by trackActiveContext when it's called by the XHR monitor.
 }

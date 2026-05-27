@@ -1,3 +1,4 @@
+/// <reference types="google.maps" />
 import { loadGoogleMaps } from './utils/loadMap';
 
 /**
@@ -33,6 +34,10 @@ async function initAutocomplete(apiKey: string): Promise<void> {
     container?.appendChild(autocompleteElement);
   }
 
+  // Shift focus from the old placeholder to the new Google component.
+  // We use a small timeout to ensure the component is connected and ready.
+  setTimeout(() => autocompleteElement.focus(), 50);
+
   console.log('[Sandbox] PlaceAutocompleteElement attached to DOM.');
 
   // Modern API uses the gmp-select event
@@ -51,7 +56,7 @@ async function initAutocomplete(apiKey: string): Promise<void> {
 
     try {
       await place.fetchFields({
-        fields: ['addressComponents', 'displayName', 'formattedAddress'],
+        fields: ['id', 'addressComponents', 'displayName', 'formattedAddress', 'types'],
       });
     } catch (error) {
       console.error('[Sandbox] Failed to fetch place details:', error);
@@ -64,7 +69,7 @@ async function initAutocomplete(apiKey: string): Promise<void> {
     }
 
     const addressData = {
-      name: place.displayName?.text || place.formattedAddress || '',
+      name: '',
       address1: '',
       address2: '',
       city: '',
@@ -72,15 +77,21 @@ async function initAutocomplete(apiKey: string): Promise<void> {
       postal_code: '',
     };
 
+    let streetNumber = '';
+    let route = '';
+    let premise = '';
+
     // Note: Modern components use camelCase properties (shortText, longText)
     place.addressComponents.forEach((c: any) => {
       const val = c.shortText;
       const types = c.types as string[];
 
       if (types.includes('street_number')) {
-        addressData.address1 = val;
+        streetNumber = val;
       } else if (types.includes('route')) {
-        addressData.address1 = addressData.address1 ? `${addressData.address1} ${val}` : val;
+        route = val;
+      } else if (types.includes('premise')) {
+        premise = val;
       } else if (types.includes('subpremise')) {
         addressData.address2 = val;
       } else if (types.includes('locality') || types.includes('sublocality_level_1')) {
@@ -91,6 +102,14 @@ async function initAutocomplete(apiKey: string): Promise<void> {
         addressData.postal_code = val;
       }
     });
+
+    // Construct Address1: Prioritize Street Number + Route. Fallback to Premise.
+    const streetAddress = [streetNumber, route].filter(Boolean).join(' ');
+    addressData.address1 = streetAddress || premise || '';
+
+    // Construct Name: Use displayName if available, otherwise use Address1
+    const establishmentName = place.displayName?.text || (typeof place.displayName === 'string' ? place.displayName : '');
+    addressData.name = establishmentName || addressData.address1;
 
     console.log('[Sandbox] Sending address data back to P21:', addressData);
 

@@ -1,4 +1,4 @@
-export type P21EndpointKind = 'data' | 'grid-state' | 'transaction' | 'ui-full' | 'unknown';
+export type P21EndpointKind = 'data' | 'design' | 'grid' | 'grid-state' | 'history' | 'clear' | 'save' | 'transaction' | 'ui-full' | 'unknown';
 
 export interface ParsedP21Request {
   normalizedUrl: string;
@@ -83,6 +83,21 @@ export const parseP21Payload = (raw: string | unknown): ParsedP21Payload => {
 const classifyEndpoint = (path: string): P21EndpointKind => {
   if (path.endsWith('/ui/full/v2/data/data') || path.endsWith('/ui/full/v1/data/data')) {
     return 'data';
+  }
+  if (path.includes('/design')) {
+    return 'design';
+  }
+  if (path.includes('/tools/Quick.Clear')) {
+    return 'clear';
+  }
+  if (path.includes('/tools/Quick.Save')) {
+    return 'save';
+  }
+  if (path.includes('/ui/full/v2/window/history')) {
+    return 'history';
+  }
+  if (path.includes('/ui/full/v1/grid')) {
+    return 'grid';
   }
   if (/\/ui\/full\/v\d+\/grid\/.+\/elements\/state$/i.test(path)) {
     return 'grid-state';

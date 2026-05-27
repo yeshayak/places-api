@@ -1,7 +1,9 @@
+/// <reference types="google.maps" />
 // Fix for TypeScript: declare window.initMap
 declare global {
   interface Window {
     initMap: () => void;
+    google: any;
   }
 }
 

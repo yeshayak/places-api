@@ -28,9 +28,8 @@
     {
       "resources": [
         "injectKey.js",
-        "loadMap.js",
+        "utils/loadMap.js",
         "autocomplete.js",
-        "autocomplete2.js",
         "p21-data-endpoint.js",
         "w_order_entry_sheet.js",
         "w_ship_to_sheet.js",
@@ -41,9 +40,9 @@
         "action-monitor.js",
         "follow-up-requests.js",
         "automation-rules.js",
-        "matcher-utils.js",
-        "request-parser.js",
-        "p21-session.js",
+        "utils/matcher-utils.js",
+        "utils/request-parser.js",
+        "utils/p21-session.js",
         "utils/userSession.js",
         "utils/duplicateCheck.js",
         "sandbox-autocomplete.js",

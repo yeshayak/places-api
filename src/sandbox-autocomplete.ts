@@ -22,10 +22,9 @@ const styles = `
   .p21-sandbox-overlay {
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.4);
+    background: rgba(0,0,0,0.2);
     display: flex; justify-content: center; align-items: center;
     z-index: 20000;
-    backdrop-filter: blur(2px);
   }
   .p21-sandbox-modal {
     background: white;
@@ -117,9 +116,6 @@ export const attachSandboxLauncher = (input: HTMLInputElement, containerSelector
 
   console.log('[P21 EXT] Initiating attachment for:', input);
 
-  // Ensure input doesn't hide text behind the icon
-  input.style.paddingRight = `${input.offsetHeight}px`;
-
   input.after(btn);
   alignButton();
   input.dataset.sandboxAttached = 'true';
@@ -187,6 +183,7 @@ export const openSandbox = async (containerSelector: string, includeName: boolea
   iframe.className = 'p21-sandbox-iframe';
   iframe.onload = () => {
     if (apiKey) {
+      iframe.focus();
       iframe.contentWindow?.postMessage({ type: 'INIT_SANDBOX', apiKey }, '*');
     }
   };

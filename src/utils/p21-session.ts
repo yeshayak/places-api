@@ -42,6 +42,11 @@ export interface P21DesignResponse {
     TabDefinition?: {
       UniqueName?: string;
       Name?: string;
+      Sections?: Array<{
+        Name?: string;
+        Dataobject?: string;
+        [key: string]: any;
+      }>;
     };
     // New properties based on examples
     PropertiesSet?: P21DataWindowProperties; // For /ui/full/v1/grid/ responses

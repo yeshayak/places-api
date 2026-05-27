@@ -69,10 +69,6 @@ export const attachSandboxLauncher = (input: HTMLInputElement, containerSelector
     document.head.appendChild(styleEl);
   }
 
-  // Establish a positioning context on the parent
-  const parent = input.parentElement;
-  if (parent) parent.style.position = 'relative';
-
   const btn = document.createElement('button');
   btn.className = 'p21-sandbox-launcher';
   btn.type = 'button';
@@ -84,34 +80,18 @@ export const attachSandboxLauncher = (input: HTMLInputElement, containerSelector
 
   // Position the button specifically relative to the input's vertical center
   const alignButton = () => {
-    const inputTop = input.offsetTop;
-    const inputLeft = input.offsetLeft;
-    const inputWidth = input.offsetWidth;
-    const inputHeight = input.offsetHeight;
+    if (!input.isConnected) return;
 
-    // Match button size to input height for seamless integration
-    const btnSize = inputHeight;
-    const overlap = 2; // Pixels to tuck the icon inside the right border
-
-    const calculatedTop = inputTop;
-    const calculatedLeft = inputLeft + inputWidth - btnSize - overlap;
+    // P21 uses absolute positioning on inputs relative to DataWindow containers.
+    // We place the button as a sibling using the same coordinate system
+    // to ensure zero interference with the input's own box model or flow.
+    const btnSize = input.offsetHeight;
+    const overlap = 1; // Pixels to tuck the icon inside the right border
 
     btn.style.height = `${btnSize}px`;
     btn.style.width = `${btnSize}px`;
-
-    console.log(`[P21 EXT] Expected button position:`, {
-      inputTop,
-      inputLeft,
-      inputWidth,
-      inputHeight,
-      calculatedTop,
-      calculatedLeft,
-      parent: input.parentElement,
-      offsetParent: input.offsetParent,
-    });
-
-    btn.style.top = `${calculatedTop}px`;
-    btn.style.left = `${calculatedLeft}px`;
+    btn.style.top = `${input.offsetTop}px`;
+    btn.style.left = `${input.offsetLeft + input.offsetWidth - btnSize - overlap}px`;
   };
 
   console.log('[P21 EXT] Initiating attachment for:', input);
@@ -122,6 +102,10 @@ export const attachSandboxLauncher = (input: HTMLInputElement, containerSelector
 
   // Handle potential P21 layout shifts
   window.addEventListener('resize', alignButton);
+
+  // Use MutationObserver to track Prophet 21's dynamic positioning changes (ng-style)
+  // and keep the button locked to the input field's edge.
+  new MutationObserver(alignButton).observe(input, { attributes: true, attributeFilter: ['style', 'class'] });
 
   btn.addEventListener('click', (e) => {
     e.preventDefault();

@@ -1,51 +1,48 @@
 /// <reference types="angular" />
 import { getUserSession } from './userSession';
 
-// Using global angular variable from the page
-interface WindowData {
-  [key: string]: Array<{
-    customer_id: string;
-  }>;
-}
-
-type RootScope = AngularScope & {
-  windowData: WindowData;
-};
-
 interface ODataResponse {
   '@odata.count': number;
   value: [];
 }
 
-export const duplicateCheck = async (lookupName: string, root = angular.element('#contextWindow'), customerIdKey = 'TABPAGE_1.order'): Promise<void> => {
-  if (!root) {
-    console.error('Root scope is not available.');
-    return;
-  }
+export const duplicateCheck = async (lookupName: string, customerId?: string): Promise<void> => {
+  console.log(`[P21 EXT] Duplicate check initiated for: ${lookupName}`);
+
+  if (!lookupName) return;
 
   const userSession = getUserSession();
   if (!userSession) return;
 
   const { token, p21SoaUrl } = userSession;
-  const customerId = (root.scope() as RootScope).windowData?.[customerIdKey]?.[0]?.customer_id;
-
   if (!customerId) {
-    console.error('Customer ID is missing.');
+    console.warn('[P21 EXT] Duplicate check aborted: No Customer ID provided.');
     return;
   }
+  const cleanCustomerId = String(customerId).trim();
 
   const headers = new Headers({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
   });
 
+  // Escape single quotes for OData compatibility
+  const escapedLookup = lookupName.replace(/'/g, "''").toLowerCase();
+
   try {
-    const response = await fetch(`${p21SoaUrl}/odataservice/odata/view/ice_ship_to_address?$filter=delete_flag eq 'N' and customer_id eq ${customerId} and contains(phys_address1, '${lookupName}')&$count=true`, { method: 'GET', headers });
+    // 1. Use tolower() for case-insensitive matching
+    // 2. Wrap customerId in quotes in case it is stored as a string in the OData view
+    const url = `${p21SoaUrl}/odataservice/odata/view/ice_ship_to_address?$filter=delete_flag eq 'N' and (customer_id eq '${cleanCustomerId}' or customer_id eq ${cleanCustomerId}) and contains(tolower(phys_address1), '${escapedLookup}')&$count=true`;
+
+    if (localStorage.getItem('p21ExtDebug') === 'true') console.log('[P21 EXT] Duplicate Check URL:', url);
+
+    const response = await fetch(url, { method: 'GET', headers });
     const result: ODataResponse = await response.json();
 
     if (result['@odata.count'] > 0) {
-      console.log('Duplicate Ship To:', result.value);
-      alert('Duplicate Ship To');
+      console.warn('[P21 EXT] Duplicate Ship To detected:', result.value);
+      // Use a slight delay for the alert to ensure it doesn't block the UI thread during field sync
+      setTimeout(() => alert(`Potential Duplicate Address Found:\n\n${lookupName}\n\nExisting records: ${result['@odata.count']}`), 100);
     } else {
       console.log('No duplicates found for address:', lookupName);
     }

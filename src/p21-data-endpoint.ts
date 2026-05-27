@@ -1,6 +1,7 @@
 /// <reference types="angular" />
 import type { P21DesignResponse, P21DataWindowProperties, P21FieldProperty } from './utils/p21-session';
 import { attachSandboxLauncher, openSandbox } from './sandbox-autocomplete';
+import { duplicateCheck } from './utils/duplicateCheck';
 
 export interface P21FieldUpdate {
   dwName: string;
@@ -40,7 +41,12 @@ interface FieldMetadata {
 type DataWindowFieldMetadataMap = Map<string, Map<string, FieldMetadata>>;
 
 interface P21DataEndpointWindow extends Window {
-  __p21DataEndpoint?: { buildAddressUpdates: typeof buildAddressUpdates; triggerFieldUpdates: typeof triggerFieldUpdates; trackActiveContext: typeof trackActiveContext };
+  __p21DataEndpoint?: {
+    buildAddressUpdates: typeof buildAddressUpdates;
+    triggerFieldUpdates: typeof triggerFieldUpdates;
+    trackActiveContext: typeof trackActiveContext;
+    getP21Value: typeof getP21Value;
+  };
 }
 
 const state = {
@@ -68,13 +74,24 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
   if (!response || typeof response !== 'object') return;
 
   // Only clear metadata when receiving a fresh design or data-information response.
-  // Incremental data updates (PUT/PATCH) must preserve existing schemas and records.
-  const isDesign = url.includes('/design') || url.includes('/Quick.Clear') || url.includes('/Quick.Save') || Boolean(response.Result) || Boolean(response.DataInformation);
-  if (isDesign) {
+  // We now only clear the global data state if the Window Class actually changes,
+  // which prevents losing the Header data (Customer ID) when switching tabs.
+  // We use broader string matching to catch various URL path formats for tool actions.
+  // Adding '/window/history' to ensure state resets when record navigation occurs.
+  const isFullReset = url.includes('Quick.Clear') || url.includes('Quick.Save') || url.includes('/window/history');
+
+  const isIncrementalDesign = url.includes('/design') || Boolean(response.Result);
+
+  if (isFullReset) {
     state.activeContext = {};
     state.dataWindowSchemas.clear();
     state.allDataWindows.clear();
     state.windowFieldProperties.clear(); // Clear new state
+  } else if (isIncrementalDesign) {
+    // On incremental tab/ribbon designs, we clear schemas but KEEP allDataWindows
+    // so that fields like customer_id remain accessible globally.
+    state.dataWindowSchemas.clear();
+    state.windowFieldProperties.clear();
   }
 
   const { Result, Data, DataInformation } = response;
@@ -106,11 +123,30 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
     });
   }
 
-  // 3. Store all DataWindows from the latest Data object
+  // 3. Incrementally store and merge DataWindow records.
+  // P21 often returns partial row data. We merge new fields into existing cached rows
+  // based on the _internalrowindex to maintain a "Full Record" of the current state.
   if (Data && typeof Data === 'object') {
     Object.entries(Data).forEach(([dwKey, rows]) => {
       if (Array.isArray(rows)) {
-        state.allDataWindows.set(dwKey, rows as Record<string, unknown>[]);
+        const existingRows = state.allDataWindows.get(dwKey) || [];
+        const mergedRows = [...existingRows];
+
+        rows.forEach((newRow: any) => {
+          if (newRow && typeof newRow === 'object') {
+            // Use P21's internal row index (1-based) as the merge key.
+            const rowIndex = parseInt(newRow._internalrowindex, 10);
+            if (!isNaN(rowIndex) && rowIndex > 0) {
+              const idx = rowIndex - 1;
+              mergedRows[idx] = { ...mergedRows[idx], ...newRow };
+            } else if (mergedRows.length === 0 || rows.length === 1) {
+              // Fallback for single-row forms or non-indexed data
+              mergedRows[0] = { ...mergedRows[0], ...newRow };
+            }
+          }
+        });
+
+        state.allDataWindows.set(dwKey, mergedRows as Record<string, unknown>[]);
       }
     });
   }
@@ -178,8 +214,11 @@ export const getP21DataWindow = (dwKey: string): Record<string, unknown>[] | und
  */
 export const getP21Value = (fieldName: string): unknown => {
   for (const rows of state.allDataWindows.values()) {
-    if (rows.length > 0 && rows[0] && typeof rows[0] === 'object' && fieldName in rows[0]) {
-      return (rows[0] as Record<string, unknown>)[fieldName];
+    for (const row of rows) {
+      if (row && typeof row === 'object' && fieldName in row) {
+        const val = (row as Record<string, unknown>)[fieldName];
+        if (val !== undefined && val !== null && val !== '') return val;
+      }
     }
   }
   return undefined;
@@ -307,6 +346,28 @@ export const discoverAndAttachAddressUI = async (retryCount = 0): Promise<void> 
       state.hotkeyBound = true;
     }
 
+    // Automated Duplicate Check Attachment:
+    // Find all visible address1 inputs and attach a blur listener to trigger duplicate checks.
+    // This handles both manual entry and automated updates from the Sandbox.
+    const allInputs = Array.from(document.querySelectorAll('input'));
+    allInputs.forEach((input) => {
+      if (ADDR1_REGEX.test(input.id) && !input.dataset.duplicateCheckAttached) {
+        if (isDebugEnabled()) console.log(LOG_PREFIX, `Attaching duplicate check listener to: ${input.id}`);
+        input.addEventListener('blur', () => {
+          const val = input.value.trim();
+          if (isDebugEnabled()) console.log(LOG_PREFIX, `Blur detected on address1. Value: "${val}". Context Active: ${isAddressContextActive()}, Schemas: ${state.dataWindowSchemas.size}`);
+
+          // Only check if we are in an active address context and have a value
+          if (val && (isAddressContextActive() || state.dataWindowSchemas.size === 0)) {
+            const customerId = getP21Value('customer_id');
+            if (isDebugEnabled()) console.log(LOG_PREFIX, `Triggering duplicate check for: ${val} (Customer: ${customerId})`);
+            duplicateCheck(val, customerId as string);
+          }
+        });
+        input.dataset.duplicateCheckAttached = 'true';
+      }
+    });
+
     const anchor = findAnchorInput();
 
     // DOM Fallback Logic:
@@ -395,14 +456,14 @@ window.addEventListener('p21-ext:xhr-response', (event) => {
   const response = detail.responseValue as P21DesignResponse;
 
   // Safety guard: ensure we have a valid object to inspect.
-  if (!response || typeof response !== 'object' || Array.isArray(response)) return;
+  if (!response || typeof response !== 'object') return;
 
   if (detail.method === 'PUT' || detail.method === 'PATCH') return;
 
   trackActiveContext(response, detail.url);
 
   // Structural actions (Clear, Save, Design) cause heavy DOM churn.
-  const isStructuralRescan = detail.url.includes('Quick.Clear') || detail.url.includes('Quick.Save') || detail.url.includes('/design') || Boolean(response.Result) || Boolean(response.DataInformation);
+  const isStructuralRescan = detail.url.includes('Quick.Clear') || detail.url.includes('Quick.Save') || detail.url.includes('/design') || Boolean(response.Result);
 
   if (isAddressRelated(response) || isStructuralRescan || detail.url.includes('/history')) {
     if (isStructuralRescan) {
@@ -742,6 +803,7 @@ dataEndpointWindow.__p21DataEndpoint = {
   buildAddressUpdates,
   triggerFieldUpdates,
   trackActiveContext,
+  getP21Value, // Export getP21Value for use in sandbox.ts
 };
 
 // Process field properties from Result.PropertiesSet or Result.Properties

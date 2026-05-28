@@ -1,16 +1,40 @@
-name: Sync Extension Locally
+name: Build
+
 on:
+  pull_request:
   push:
-    branches:
+    branches-ignore:
       - main
+      - master
+      - dev
 
 jobs:
-  update_local:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+  build:
+    name: Type-check and build extension
+    runs-on: ubuntu-latest
 
-      - name: Sync to Local Path
-        run: |
-          cp -r ./extension_folder "H:\gator extention\places-api"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: p21-helper-build
+          path: dist
+          if-no-files-found: error

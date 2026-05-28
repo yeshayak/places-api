@@ -1,16 +1,162 @@
-name: Deploy on Dev Merge to Master
+name: Deploy Chrome Extension
+
 on:
   push:
     branches:
+      - main
       - master
+      - dev
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Store item to deploy
+        required: true
+        type: choice
+        options:
+          - production
+          - dev
 
 jobs:
-  update_local:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+  deploy:
+    name: Build and publish
+    runs-on: ubuntu-latest
 
-      - name: Sync to Local Path
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve deployment target
+        id: target
+        shell: bash
         run: |
-          Copy-Item -Path "./extension_folder/*" -Destination "H:\gator extention\places-api" -Recurse -Force
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TARGET="${{ inputs.target }}"
+          elif [[ "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "master" ]]; then
+            TARGET="production"
+          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
+            TARGET="dev"
+          else
+            echo "Unsupported branch: ${{ github.ref_name }}" >&2
+            exit 1
+          fi
+
+          if [[ "$TARGET" == "production" ]]; then
+            echo "target=production" >> "$GITHUB_OUTPUT"
+            echo "manifest=public/manifest.json" >> "$GITHUB_OUTPUT"
+            echo "artifact_name=p21-helper-production" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=dev" >> "$GITHUB_OUTPUT"
+            echo "manifest=public/manifest.dev.json" >> "$GITHUB_OUTPUT"
+            echo "artifact_name=p21-helper-dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Apply selected manifest
+        shell: bash
+        run: |
+          cp "${{ steps.target.outputs.manifest }}" dist/manifest.json
+          rm -f dist/manifest.dev.json
+
+      - name: Set deployment version
+        shell: bash
+        run: |
+          node -e "const fs=require('fs'); const manifestPath='dist/manifest.json'; const packageVersion=require('./package.json').version; const parts=packageVersion.split('.').slice(0,3); while (parts.length < 3) parts.push('0'); parts.push(process.env.GITHUB_RUN_NUMBER); const manifest=JSON.parse(fs.readFileSync(manifestPath,'utf8')); manifest.version=parts.join('.'); fs.writeFileSync(manifestPath, JSON.stringify(manifest,null,2) + '\n'); console.log('manifest.version=' + manifest.version);"
+
+      - name: Package extension
+        shell: bash
+        run: |
+          cd dist
+          zip -r "../${{ steps.target.outputs.artifact_name }}.zip" .
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.target.outputs.artifact_name }}
+          path: ${{ steps.target.outputs.artifact_name }}.zip
+          if-no-files-found: error
+
+      - name: Request Chrome Web Store access token
+        id: auth
+        shell: bash
+        run: |
+          TOKEN_RESPONSE="$(curl --fail-with-body -sS -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=${{ secrets.CWS_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.CWS_CLIENT_SECRET }}" \
+            -d "refresh_token=${{ secrets.CWS_REFRESH_TOKEN }}" \
+            -d "grant_type=refresh_token")"
+
+          ACCESS_TOKEN="$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')"
+          if [[ -z "$ACCESS_TOKEN" ]]; then
+            echo "$TOKEN_RESPONSE" >&2
+            exit 1
+          fi
+
+          echo "access_token=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to Chrome Web Store
+        shell: bash
+        env:
+          CWS_EXTENSION_ID_PROD: ${{ secrets.CWS_EXTENSION_ID_PROD }}
+          CWS_EXTENSION_ID_DEV: ${{ secrets.CWS_EXTENSION_ID_DEV }}
+        run: |
+          if [[ "${{ steps.target.outputs.target }}" == "production" ]]; then
+            EXTENSION_ID="$CWS_EXTENSION_ID_PROD"
+          else
+            EXTENSION_ID="$CWS_EXTENSION_ID_DEV"
+          fi
+
+          UPLOAD_RESPONSE="$(curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.access_token }}" \
+            -T "${{ steps.target.outputs.artifact_name }}.zip" \
+            "https://chromewebstore.googleapis.com/upload/v2/publishers/${{ secrets.CWS_PUBLISHER_ID }}/items/$EXTENSION_ID:upload")"
+
+          echo "$UPLOAD_RESPONSE"
+          UPLOAD_STATE="$(echo "$UPLOAD_RESPONSE" | jq -r '.uploadState // empty')"
+
+          for attempt in {1..10}; do
+            if [[ "$UPLOAD_STATE" != "IN_PROGRESS" ]]; then
+              break
+            fi
+
+            sleep 15
+            STATUS_RESPONSE="$(curl --fail-with-body -sS \
+              -H "Authorization: Bearer ${{ steps.auth.outputs.access_token }}" \
+              "https://chromewebstore.googleapis.com/v2/publishers/${{ secrets.CWS_PUBLISHER_ID }}/items/$EXTENSION_ID:fetchStatus")"
+            echo "$STATUS_RESPONSE"
+            UPLOAD_STATE="$(echo "$STATUS_RESPONSE" | jq -r '.lastAsyncUploadState // empty')"
+          done
+
+          if [[ "$UPLOAD_STATE" == "IN_PROGRESS" || "$UPLOAD_STATE" == "FAILED" ]]; then
+            echo "Upload did not complete successfully. Final state: $UPLOAD_STATE" >&2
+            exit 1
+          fi
+
+      - name: Submit for review
+        shell: bash
+        env:
+          CWS_EXTENSION_ID_PROD: ${{ secrets.CWS_EXTENSION_ID_PROD }}
+          CWS_EXTENSION_ID_DEV: ${{ secrets.CWS_EXTENSION_ID_DEV }}
+        run: |
+          if [[ "${{ steps.target.outputs.target }}" == "production" ]]; then
+            EXTENSION_ID="$CWS_EXTENSION_ID_PROD"
+          else
+            EXTENSION_ID="$CWS_EXTENSION_ID_DEV"
+          fi
+
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.access_token }}" \
+            "https://chromewebstore.googleapis.com/v2/publishers/${{ secrets.CWS_PUBLISHER_ID }}/items/$EXTENSION_ID:publish"

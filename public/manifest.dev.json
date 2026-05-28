@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "P21 Helper",
-  "short_name": "P21 Helper",
+  "name": "P21 Helper Dev",
+  "short_name": "P21 Dev",
   "version": "1.0.1",
-  "description": "Enhances Prophet 21 with address lookup, Places autocomplete, duplicate checks, and P21 workflow helpers.",
+  "description": "Dev build of P21 Helper for testing Prophet 21 address lookup, Places autocomplete, and workflow automation.",
   "permissions": ["scripting", "storage", "tabs"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "content_security_policy": {
@@ -22,7 +22,7 @@
       "24": "gator24.png",
       "32": "gator32.png"
     },
-    "default_title": "P21 Helper",
+    "default_title": "P21 Helper Dev",
     "default_popup": "popup.html"
   },
   "web_accessible_resources": [

@@ -401,51 +401,69 @@ export const discoverAndAttachAddressUI = async (retryCount = 0): Promise<void> 
  * Internal helper to find the best candidate for an address anchor.
  */
 const findAnchorInput = (): HTMLElement | null => {
-  if (isDebugEnabled()) console.log(LOG_PREFIX, 'Attempting to find anchor input...');
+  if (isDebugEnabled()) console.log(LOG_PREFIX, 'findAnchorInput: Attempting to find anchor input...');
 
   // 1. XHR-Prioritized Discovery: Use server-reported active context to find precise elements
   const { tabName, dataWindow } = state.activeContext;
   if (tabName && dataWindow) {
-    if (isDebugEnabled()) console.log(LOG_PREFIX, `XHR context active: tabName=${tabName}, dataWindow=${dataWindow}`);
+    if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: XHR context active: tabName=${tabName}, dataWindow=${dataWindow}`);
     const fullDwName = `${tabName}.${dataWindow}`;
     const schema = state.dataWindowSchemas.get(fullDwName);
     if (schema) {
-      if (isDebugEnabled()) console.log(LOG_PREFIX, `Schema found for ${fullDwName}. Fields:`, Array.from(schema));
+      if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: Schema found for ${fullDwName}. Fields:`, Array.from(schema));
       // Use regex to find the best anchor field name directly from the schema keys
       const anchorFieldName = Array.from(schema).find((f) => ADDR_NAME_REGEX.test(f) || ADDR1_REGEX.test(f));
       if (anchorFieldName) {
-        if (isDebugEnabled()) console.log(LOG_PREFIX, `Anchor field name identified from schema: ${anchorFieldName}`);
+        if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: Anchor field name identified from schema: ${anchorFieldName}`);
         const preciseId = `${fullDwName}.${anchorFieldName}`;
         let el = document.getElementById(preciseId);
-        if (isDebugEnabled()) console.log(LOG_PREFIX, `Attempting to find element by precise ID: ${preciseId}. Found:`, !!el);
+        if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: Attempting to find element by precise ID: ${preciseId}. Found:`, !!el);
         if (!el) {
           const dwContainer = document.querySelector(`[id="${fullDwName}"]`);
-          if (isDebugEnabled()) console.log(LOG_PREFIX, `Direct ID not found. Searching within container [id="${fullDwName}"]. Found container:`, !!dwContainer);
+          if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: Direct ID not found. Searching within container [id="${fullDwName}"]. Found container:`, !!dwContainer);
           el = dwContainer?.querySelector(`input[id$=".${anchorFieldName}"]`) as HTMLElement;
-          if (isDebugEnabled()) console.log(LOG_PREFIX, `Found element within container:`, !!el);
+          if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: Found element within container:`, !!el);
         }
         if (el instanceof HTMLInputElement && isFieldEnabled(el) && el.isConnected && el.getClientRects().length > 0) {
-          if (isDebugEnabled()) console.log(LOG_PREFIX, `XHR-prioritized anchor input found and enabled:`, el);
+          if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: XHR-prioritized anchor input found and enabled:`, el, `(Source: XHR)`);
           return el;
         } else if (isDebugEnabled()) {
-          console.log(LOG_PREFIX, `XHR-prioritized element found but not usable:`, el, `isFieldEnabled=${isFieldEnabled(el)}`, `isConnected=${el?.isConnected}`, `getClientRects().length=${el?.getClientRects().length}`);
+          let reason = [];
+          if (!el) reason.push('Element not found');
+          else {
+            if (!(el instanceof HTMLInputElement)) reason.push('Not an input element');
+            if (!isFieldEnabled(el)) reason.push('Not enabled/read-only');
+            if (!el.isConnected) reason.push('Not connected to DOM');
+            if (el.getClientRects().length === 0) reason.push('Not visible (zero client rects)');
+          }
+          console.log(LOG_PREFIX, `findAnchorInput: XHR-prioritized element found but not usable for ID "${preciseId}". Reason(s): ${reason.join(', ')}. Element:`, el);
         }
       } else if (isDebugEnabled()) {
-        console.log(LOG_PREFIX, `No anchor field name found in schema for ${fullDwName} using ADDR_NAME_REGEX or ADDR1_REGEX.`);
+        console.log(LOG_PREFIX, `findAnchorInput: No anchor field name found in schema for ${fullDwName} using ADDR_NAME_REGEX or ADDR1_REGEX.`);
       }
     } else if (isDebugEnabled()) {
-      console.log(LOG_PREFIX, `No schema found for ${fullDwName}.`);
+      console.log(LOG_PREFIX, `findAnchorInput: No schema found for ${fullDwName}.`);
     }
   } else if (isDebugEnabled()) {
-    console.log(LOG_PREFIX, `No active XHR context (tabName or dataWindow missing). Falling back to DOM scan.`);
+    console.log(LOG_PREFIX, `findAnchorInput: No active XHR context (tabName or dataWindow missing). Falling back to DOM scan.`);
   }
 
   // 2. DOM-based Fallback: Scan for fields using regex patterns if XHR metadata is unavailable
   const allInputs = Array.from(document.querySelectorAll('input'));
   const nameInput = allInputs.find((i) => ADDR_NAME_REGEX.test(i.id) && isFieldEnabled(i) && i.isConnected && i.getClientRects().length > 0);
-  if (nameInput) return nameInput;
+  if (nameInput) {
+    if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: DOM-based anchor input found (Name field):`, nameInput, `(Source: DOM)`);
+    return nameInput;
+  }
 
-  return allInputs.find((i) => ADDR1_REGEX.test(i.id) && isFieldEnabled(i) && i.isConnected && i.getClientRects().length > 0) ?? null;
+  const addr1Input = allInputs.find((i) => ADDR1_REGEX.test(i.id) && isFieldEnabled(i) && i.isConnected && i.getClientRects().length > 0);
+  if (addr1Input) {
+    if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: DOM-based anchor input found (Address1 field):`, addr1Input, `(Source: DOM)`);
+    return addr1Input;
+  }
+
+  if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: No usable anchor input found via XHR or DOM scan.`);
+  return null;
 };
 
 // --- Global Event Orchestration ---

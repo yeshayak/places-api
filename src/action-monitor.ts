@@ -183,8 +183,11 @@ const patchAngularEvents = () => {
   };
 
   // Retry until Angular is fully bootstrapped
+  let attempts = 0;
+  const maxAttempts = 120;
   const interval = setInterval(() => {
-    if (tryHook()) clearInterval(interval);
+    attempts++;
+    if (tryHook() || attempts >= maxAttempts) clearInterval(interval);
   }, 500);
 };
 

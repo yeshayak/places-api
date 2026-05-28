@@ -63,10 +63,15 @@ export const loadGoogleMaps = (apiKeyOverride?: string): Promise<void> => {
     }
 
     if (document.querySelector('script[data-gmaps-loader]')) {
+      let attempts = 0;
+      const maxAttempts = 100;
       const checkLoaded = () => {
         if (window.google && window.google.maps) {
           resolve();
+        } else if (attempts >= maxAttempts) {
+          reject(new Error('Timed out waiting for Google Maps API to load'));
         } else {
+          attempts++;
           setTimeout(checkLoaded, 100);
         }
       };

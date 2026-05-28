@@ -50,6 +50,7 @@ interface FollowUpWindow extends Window {
 const FOLLOW_UP_HEADER = 'X-P21-Ext-Follow-Up';
 const MAX_IN_FLIGHT = 3;
 const RECENT_CORRELATION_TTL_MS = 30000;
+const FOLLOW_UP_TIMEOUT_MS = 30000;
 const followUpXhrs = new WeakSet<XMLHttpRequest>();
 const inFlightCorrelations = new Set<string>();
 const recentCorrelations = new Map<string, number>();
@@ -127,9 +128,19 @@ export const sendFollowUpRequest = (template: FollowUpRequestTemplate, source?: 
 
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
+    let settled = false;
+    const settle = (result: FollowUpRequestResult) => {
+      if (settled) return;
+      settled = true;
+      finishCorrelation(correlationId);
+      notifyFollowUpResult(result);
+      resolve(result);
+    };
+
     followUpXhrs.add(xhr);
     xhr.open(method, url, true);
     xhr.withCredentials = true;
+    xhr.timeout = FOLLOW_UP_TIMEOUT_MS;
 
     for (const [key, value] of Object.entries(headers)) {
       xhr.setRequestHeader(key, value);
@@ -148,16 +159,19 @@ export const sendFollowUpRequest = (template: FollowUpRequestTemplate, source?: 
         error: xhr.status >= 400 ? `Request failed with status ${xhr.status}` : undefined,
       };
 
-      finishCorrelation(correlationId);
-      notifyFollowUpResult(result);
-      resolve(result);
+      settle(result);
     });
 
     xhr.addEventListener('error', () => {
-      const result = createFailure(template, method, url, correlationId, 'Follow-up request network error.');
-      finishCorrelation(correlationId);
-      notifyFollowUpResult(result);
-      resolve(result);
+      settle(createFailure(template, method, url, correlationId, 'Follow-up request network error.'));
+    });
+
+    xhr.addEventListener('timeout', () => {
+      settle(createFailure(template, method, url, correlationId, 'Follow-up request timed out.'));
+    });
+
+    xhr.addEventListener('abort', () => {
+      settle(createFailure(template, method, url, correlationId, 'Follow-up request aborted.'));
     });
 
     xhr.send(serializedBody);

@@ -80,7 +80,10 @@ export const attachSandboxLauncher = (input: HTMLInputElement, containerSelector
 
   // Position the button specifically relative to the input's vertical center
   const alignButton = () => {
-    if (!input.isConnected) return;
+    if (!input.isConnected) {
+      cleanup();
+      return;
+    }
 
     // P21 uses absolute positioning on inputs relative to DataWindow containers.
     // We place the button as a sibling using the same coordinate system
@@ -94,6 +97,14 @@ export const attachSandboxLauncher = (input: HTMLInputElement, containerSelector
     btn.style.left = `${input.offsetLeft + input.offsetWidth - btnSize - overlap}px`;
   };
 
+  let observer: MutationObserver | null = null;
+  const cleanup = () => {
+    window.removeEventListener('resize', alignButton);
+    observer?.disconnect();
+    observer = null;
+    btn.remove();
+  };
+
   console.log('[P21 EXT] Initiating attachment for:', input);
 
   input.after(btn);
@@ -105,7 +116,8 @@ export const attachSandboxLauncher = (input: HTMLInputElement, containerSelector
 
   // Use MutationObserver to track Prophet 21's dynamic positioning changes (ng-style)
   // and keep the button locked to the input field's edge.
-  new MutationObserver(alignButton).observe(input, { attributes: true, attributeFilter: ['style', 'class'] });
+  observer = new MutationObserver(alignButton);
+  observer.observe(input, { attributes: true, attributeFilter: ['style', 'class'] });
 
   btn.addEventListener('click', (e) => {
     e.preventDefault();

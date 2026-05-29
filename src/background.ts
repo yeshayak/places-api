@@ -1,17 +1,12 @@
 console.log('Service Worker: Background script loaded');
 
-// Listen for service worker installation
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('Service Worker: Installed');
-});
+const P21_CONFIG = {
+  paths: ['/window/w_order_entry_sheet', '/window/w_ship_to_sheet', '/window/w_customer_maint_sheet', '/window/w_customer_master_inquiry', '/window/w_ship_sheet', '/window/w_purchase_order_entry_sheet', '/window/w_vendor_sheet'],
+};
 
-const p21WindowPaths = ['/window/w_order_entry_sheet', '/window/w_ship_to_sheet', '/window/w_customer_maint_sheet', '/window/w_customer_master_inquiry', '/window/w_ship_sheet', '/window/w_purchase_order_entry_sheet'];
-
-const p21WindowTitles = ['Order Entry:', 'Ship To Maintenance:', 'Customer Maintenance:', 'Customer Master Inquiry:', 'Purchase Order Entry:'];
+const p21WindowPaths = P21_CONFIG.paths;
 
 const isP21WindowUrl = (url: string | undefined): boolean => Boolean(url && p21WindowPaths.some((path) => url.includes(path)));
-
-const isP21WindowTitle = (title: string | undefined): boolean => Boolean(title && title !== 'Prophet 21' && p21WindowTitles.some((prefix) => title.startsWith(prefix)));
 
 const sendTabMessage = (tabId: number, message: unknown): void => {
   chrome.tabs.sendMessage(tabId, message, () => {
@@ -21,6 +16,11 @@ const sendTabMessage = (tabId: number, message: unknown): void => {
   });
 };
 
+/**
+ * Entrypoint: Ensures the core content script is injected into valid P21 tabs.
+ * Utilizes a meta-tag check to prevent redundant executions and handles
+ * host permission verification.
+ */
 const ensureContentScript = (tabId: number, url: string, onReady?: () => void): void => {
   let origin: string;
   try {
@@ -74,16 +74,17 @@ const ensureContentScript = (tabId: number, url: string, onReady?: () => void): 
   });
 };
 
-chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tabInfo: chrome.tabs.Tab): void => {
-  if (!tabInfo.url) return;
-
-  const title = changeInfo.title ?? tabInfo.title;
-  const shouldInject = isP21WindowUrl(tabInfo.url) || isP21WindowTitle(title);
-  if (!shouldInject) return;
+/**
+ * Main Event Listener: Orchestrates the hand-off to the content script
+ * when a tab navigates or changes titles.
+ */
+const handleTabUpdate = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tabInfo: chrome.tabs.Tab): void => {
+  if (!changeInfo.title || !tabInfo.url || !isP21WindowUrl(tabInfo.url) || changeInfo.title === 'Prophet 21') return;
 
   ensureContentScript(tabId, tabInfo.url, () => {
-    if (isP21WindowTitle(title)) {
-      sendTabMessage(tabId, { changeInfo: { ...changeInfo, title } });
+    // Pass meaningful title updates to the content script for routing.
+    if (changeInfo.title) {
+      sendTabMessage(tabId, { changeInfo, url: tabInfo.url });
     }
 
     console.log('Updated P21 tab: ' + tabId);
@@ -92,4 +93,10 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
     console.log('New tab Info: ');
     console.log(tabInfo);
   });
+};
+
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('Service Worker: Installed');
 });
+
+chrome.tabs.onUpdated.addListener(handleTabUpdate);

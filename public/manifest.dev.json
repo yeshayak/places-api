@@ -4,23 +4,14 @@
   "short_name": "P21 Dev",
   "version": "1.0.2",
   "description": "Dev build of P21 Helper for testing Prophet 21 address lookup, Places autocomplete, and workflow automation.",
-  "permissions": [
-    "scripting",
-    "storage",
-    "tabs"
-  ],
-  "optional_host_permissions": [
-    "https://*/*",
-    "http://*/*"
-  ],
+  "permissions": ["scripting", "storage", "tabs"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://gatorps.prokeep.com https://places.googleapis.com",
     "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' https://maps.googleapis.com; connect-src 'self' https://maps.googleapis.com https://places.googleapis.com;"
   },
   "sandbox": {
-    "pages": [
-      "sandbox.html"
-    ]
+    "pages": ["sandbox.html"]
   },
   "background": {
     "service_worker": "background.js"
@@ -36,33 +27,8 @@
   },
   "web_accessible_resources": [
     {
-      "resources": [
-        "utils/load-map.js",
-        "p21-data-endpoint.js",
-        "w_order_entry_sheet.js",
-        "w_ship_to_sheet.js",
-        "w_customer_maint_sheet.js",
-        "w_customer_master_inquiry.js",
-        "w_purchase_order_entry_sheet.js",
-        "xhr-monitor.js",
-        "action-monitor.js",
-        "p21-context-monitor.js",
-        "address-autocomplete-ui.js",
-        "address-field-patterns.js",
-        "follow-up-requests.js",
-        "automation-rules.js",
-        "utils/matcher-utils.js",
-        "utils/request-parser.js",
-        "utils/p21-session.js",
-        "utils/user-session.js",
-        "utils/duplicate-check.js",
-        "address-sandbox-launcher.js",
-        "sandbox.html",
-        "address-sandbox.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
+      "resources": ["*.js", "utils/*.js", "sandbox.html"],
+      "matches": ["<all_urls>"]
     }
   ],
   "version_name": "1.0.2-dev-1"

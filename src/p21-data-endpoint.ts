@@ -97,7 +97,7 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
         const potentialWn = pathSegments[designIdx - 1];
         if (potentialWn && potentialWn !== 'page' && potentialWn.startsWith('w_')) {
           state.activeContext.windowName = potentialWn;
-          if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: windowName inferred:', state.activeContext.windowName);
+          if (isDebugEnabled()) console.warn(LOG_PREFIX, 'State: windowName inferred from URL path:', state.activeContext.windowName);
         }
       }
     } catch {
@@ -157,7 +157,7 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
     if (relevantKey) {
       const [tn] = relevantKey.split('.');
       state.activeContext.tabName = tn;
-      if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: tabName updated (fallback):', state.activeContext.tabName);
+      if (isDebugEnabled()) console.warn(LOG_PREFIX, 'State: tabName updated via key-split fallback:', state.activeContext.tabName);
     }
   }
 
@@ -177,7 +177,7 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
     const primarySection = Result.TabDefinition.Sections.find((s) => s.Dataobject || s.Name);
     if (primarySection) {
       state.activeContext.dataWindow = primarySection.Dataobject || primarySection.Name;
-      if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: dataWindow updated (fallback):', state.activeContext.dataWindow);
+      if (isDebugEnabled()) console.warn(LOG_PREFIX, 'State: dataWindow updated via Section fallback:', state.activeContext.dataWindow);
     }
   }
 
@@ -500,6 +500,8 @@ export const buildAddressUpdates = (containerSelector: string, place: P21Address
         fieldName = uniqueCandidates.find((c) => targetSchema.has(c)) || Array.from(targetSchema).find((f) => f.toLowerCase().endsWith(suffix) || f.toLowerCase().endsWith(component)) || uniqueCandidates[0];
       } else {
         // Strategy B: DOM Probe (Fallback for initial loads)
+        if (isDebugEnabled()) console.warn(LOG_PREFIX, `Strategy B: Schema metadata unavailable for "${targetDwPath}". Falling back to DOM probe for candidate matching.`);
+
         // Check which candidate actually exists in the current DOM
         fieldName =
           uniqueCandidates.find((c) => {

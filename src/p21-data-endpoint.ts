@@ -1,7 +1,6 @@
 /// <reference types="angular" />
 import type { P21DesignResponse, P21DataWindowProperties, P21FieldProperty } from './utils/p21-session';
-import { attachSandboxLauncher, openSandbox } from './sandbox-autocomplete';
-import { duplicateCheck } from './utils/duplicateCheck';
+import { ADDR1_REGEX } from './address-field-patterns';
 
 export interface P21FieldUpdate {
   dwName: string;
@@ -25,7 +24,7 @@ export interface P21DataEndpointUpdateResult {
   error?: string;
 }
 
-interface P21ActiveContext {
+export interface P21ActiveContext {
   windowName?: string;
   tabName?: string;
   dataWindow?: string;
@@ -53,8 +52,6 @@ const state = {
   activeContext: {} as P21ActiveContext,
   dataWindowSchemas: new Map<string, Set<string>>(),
   allDataWindows: new Map<string, Record<string, unknown>[]>(), // Stores all DataWindows from the last design response
-  isInitializingUI: false,
-  hotkeyBound: false,
   // Map: windowName -> DataWindowFieldMetadataMap
   windowFieldProperties: new Map<string, DataWindowFieldMetadataMap>(), // New state to store field properties
 };
@@ -63,8 +60,6 @@ const LOG_PREFIX = '[P21 EXT]';
 const isDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebug') === 'true';
 const isFullDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebugFull') === 'true';
 
-const ADDR1_REGEX = /[a-z0-9_]*address1$/i;
-const ADDR_NAME_REGEX = /[a-z0-9_]*(customer_name|address_name|ship_to_name|ship_to_id_name|^name)$/i;
 const dataEndpointWindow = window as P21DataEndpointWindow;
 
 /**
@@ -77,28 +72,23 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
   // We now only clear the global data state if the Window Class actually changes,
   // which prevents losing the Header data (Customer ID) when switching tabs.
   // We use broader string matching to catch various URL path formats for tool actions.
-  // Adding '/window/history' to ensure state resets when record navigation occurs.
-  const isFullReset = url.includes('Quick.Clear') || url.includes('Quick.Save') || url.includes('/window/history');
+  // We clear record data on Clear/Save/History actions, but retain structural state (schemas/context).
+  const isDataReset = url.includes('Quick.Clear') || url.includes('Quick.Save') || url.includes('/window/history');
 
-  const isIncrementalDesign = url.includes('/design') || Boolean(response.Result);
-
-  if (isFullReset) {
-    state.activeContext = {};
-    state.dataWindowSchemas.clear();
+  if (isDataReset) {
+    // Reset active focus to prevent stale context during the transition
+    state.activeContext = { windowName: state.activeContext.windowName };
     state.allDataWindows.clear();
-    state.windowFieldProperties.clear(); // Clear new state
-  } else if (isIncrementalDesign) {
-    // On incremental tab/ribbon designs, we clear schemas but KEEP allDataWindows
-    // so that fields like customer_id remain accessible globally.
-    state.dataWindowSchemas.clear();
     state.windowFieldProperties.clear();
+    if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: Record Data Reset (Structural Context Retained)');
   }
 
-  const { Result, Data, DataInformation } = response;
+  const { Result, Data } = response;
 
   // 1. Extract Window Name
   if (Result?.Name && Result.Name !== 'page' && Result.Name.startsWith('w_')) {
     state.activeContext.windowName = Result.Name;
+    if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: windowName updated:', state.activeContext.windowName);
   } else {
     try {
       const pathSegments = url.split('/');
@@ -107,6 +97,7 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
         const potentialWn = pathSegments[designIdx - 1];
         if (potentialWn && potentialWn !== 'page' && potentialWn.startsWith('w_')) {
           state.activeContext.windowName = potentialWn;
+          if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: windowName inferred:', state.activeContext.windowName);
         }
       }
     } catch {
@@ -114,73 +105,79 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
     }
   }
 
-  // 2. Track DataWindow Schemas from Data
-  if (Data && typeof Data === 'object') {
-    Object.entries(Data).forEach(([key, rows]) => {
-      if (Array.isArray(rows) && rows.length > 0 && rows[0] && typeof rows[0] === 'object') {
-        state.dataWindowSchemas.set(key, new Set(Object.keys(rows[0])));
-      }
-    });
-  }
+  // 2. Track DataWindow Schemas and Values (Comprehensive Record)
+  // We focus exclusively on the 'Data' segment to maintain a persistent state of the entire record across tabs.
+  const dataSource = Data || {};
+  Object.entries(dataSource as Record<string, unknown>).forEach(([dwKey, value]) => {
+    if (!value || typeof value !== 'object') return;
 
-  // 3. Incrementally store and merge DataWindow records.
-  // P21 often returns partial row data. We merge new fields into existing cached rows
-  // based on the _internalrowindex to maintain a "Full Record" of the current state.
-  if (Data && typeof Data === 'object') {
-    Object.entries(Data).forEach(([dwKey, rows]) => {
-      if (Array.isArray(rows)) {
-        const existingRows = state.allDataWindows.get(dwKey) || [];
-        const mergedRows = [...existingRows];
+    // Update Schemas: ensure we know which fields exist in this DataWindow
+    const sample = Array.isArray(value) ? value[0] : value;
+    if (sample) {
+      state.dataWindowSchemas.set(dwKey, new Set(Object.keys(sample)));
+    }
 
-        rows.forEach((newRow: any) => {
-          if (newRow && typeof newRow === 'object') {
-            // Use P21's internal row index (1-based) as the merge key.
-            const rowIndex = parseInt(newRow._internalrowindex, 10);
-            if (!isNaN(rowIndex) && rowIndex > 0) {
-              const idx = rowIndex - 1;
-              mergedRows[idx] = { ...mergedRows[idx], ...newRow };
-            } else if (mergedRows.length === 0 || rows.length === 1) {
-              // Fallback for single-row forms or non-indexed data
-              mergedRows[0] = { ...mergedRows[0], ...newRow };
-            }
+    // Update Values: merge new data into the persistent record state
+    if (Array.isArray(value)) {
+      const existingRows = state.allDataWindows.get(dwKey) || [];
+      const mergedRows = [...existingRows];
+
+      value.forEach((newRow: any) => {
+        if (newRow && typeof newRow === 'object') {
+          const rowIndex = parseInt(newRow._internalrowindex, 10);
+          if (!isNaN(rowIndex) && rowIndex > 0) {
+            const idx = rowIndex - 1;
+            mergedRows[idx] = { ...mergedRows[idx], ...newRow };
+          } else if (mergedRows.length === 0 || value.length === 1) {
+            mergedRows[0] = { ...mergedRows[0], ...newRow };
           }
-        });
+        }
+      });
+      state.allDataWindows.set(dwKey, mergedRows as Record<string, unknown>[]);
+    } else {
+      // Handle single-object updates (common for some form-based DataWindows)
+      const existingRows = state.allDataWindows.get(dwKey) || [{}];
+      existingRows[0] = { ...existingRows[0], ...(value as any) };
+      state.allDataWindows.set(dwKey, existingRows);
+    }
 
-        state.allDataWindows.set(dwKey, mergedRows as Record<string, unknown>[]);
-      }
-    });
-  }
+    if (isDebugEnabled()) console.debug(LOG_PREFIX, `State: DataWindow "${dwKey}" updated (Schema & Values)`);
+  });
 
   // 4. Track Active Context (Tab and DataWindow) - More robust extraction
 
   // Extract tabName
   if (Result?.TabDefinition?.UniqueName) {
     state.activeContext.tabName = Result.TabDefinition.UniqueName;
+    if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: tabName updated:', state.activeContext.tabName);
   } else {
-    // Fallback to Data/DataInformation keys if TabDefinition is not present
-    const contextSource = Data || DataInformation || {};
+    // Fallback to Data keys if TabDefinition is not present
+    const contextSource = Data || {};
     const relevantKey = Object.keys(contextSource).find((key) => key.includes('.'));
     if (relevantKey) {
       const [tn] = relevantKey.split('.');
       state.activeContext.tabName = tn;
+      if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: tabName updated (fallback):', state.activeContext.tabName);
     }
   }
 
   // Extract dataWindow
-  // Prioritize from Data/DataInformation keys as this directly relates to what's in state.dataWindowSchemas
-  const contextSource = Data || DataInformation || {};
+  // Prioritize from Data keys as this directly relates to what's in state.dataWindowSchemas
+  const contextSource = Data || {};
   const relevantKey = Object.keys(contextSource).find((key) => key.includes('.'));
   if (relevantKey) {
     const [, dw] = relevantKey.split('.');
     state.activeContext.dataWindow = dw;
+    if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: dataWindow updated:', state.activeContext.dataWindow);
   }
 
-  // Fallback to Result.TabDefinition.Sections if not found in Data/DataInformation
+  // Fallback to Result.TabDefinition.Sections if not found in Data
   if (!state.activeContext.dataWindow && Result?.TabDefinition?.Sections) {
     // Find the first section that has a Dataobject or Name
     const primarySection = Result.TabDefinition.Sections.find((s) => s.Dataobject || s.Name);
     if (primarySection) {
       state.activeContext.dataWindow = primarySection.Dataobject || primarySection.Name;
+      if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: dataWindow updated (fallback):', state.activeContext.dataWindow);
     }
   }
 
@@ -192,8 +189,13 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
     Object.values(Result.Properties).forEach(processDataWindowProperties);
   }
 
+  // 6. Comprehensive Debug Logging of the full record state
   if (isDebugEnabled() || isFullDebugEnabled()) {
-    console.log(LOG_PREFIX, 'Active Context Updated:', state.activeContext);
+    console.debug(LOG_PREFIX, 'Full State Updated:', {
+      activeContext: state.activeContext,
+      record: Object.fromEntries(Array.from(state.allDataWindows.entries()).map(([dw, rows]) => [dw, rows.length === 1 ? rows[0] : rows])),
+      schemas: Object.fromEntries(Array.from(state.dataWindowSchemas.entries()).map(([dw, fields]) => [dw, Array.from(fields)])),
+    });
   }
 };
 
@@ -201,6 +203,14 @@ export const trackActiveContext = (response: P21DesignResponse, url: string): vo
  * Returns the currently active tab name tracked from XHR context.
  */
 export const getActiveTabName = (): string | undefined => state.activeContext.tabName;
+
+export const getActiveContext = (): P21ActiveContext => ({ ...state.activeContext });
+
+export const getDataWindowSchema = (dwKey: string): Set<string> | undefined => state.dataWindowSchemas.get(dwKey);
+
+export const getDataWindowSchemaEntries = (): Array<[string, Set<string>]> => Array.from(state.dataWindowSchemas.entries());
+
+export const getDataWindowSchemaCount = (): number => state.dataWindowSchemas.size;
 
 /**
  * Retrieves a specific DataWindow's data from the last processed design response.
@@ -268,11 +278,8 @@ export const isAddressRelated = (response: P21DesignResponse): boolean => {
  * Checks if the currently active UI context is known to have address fields based on tracked schemas.
  */
 export const isAddressContextActive = (): boolean => {
-  const { tabName, dataWindow } = state.activeContext;
-  if (!tabName || !dataWindow) return false;
-
-  const schema = state.dataWindowSchemas.get(`${tabName}.${dataWindow}`);
-  return !!schema && Array.from(schema).some((c) => ADDR1_REGEX.test(c));
+  // Scan all schemas in the current window state, not just the active context
+  return Array.from(state.dataWindowSchemas.values()).some((schema) => Array.from(schema).some((field) => ADDR1_REGEX.test(field)));
 };
 
 /**
@@ -309,198 +316,6 @@ export const getContainerSelector = (element: HTMLElement): string => {
   return '';
 };
 
-/**
- * Global discovery: finds address-related inputs and attaches search launchers.
- */
-export const discoverAndAttachAddressUI = async (retryCount = 0): Promise<void> => {
-  if (state.isInitializingUI) return;
-
-  try {
-    state.isInitializingUI = true;
-
-    // DOM Context Recovery: If XHR monitor hasn't established context yet (e.g., initial load),
-    // try to infer it from the DOM to enable features that depend on window or tab names.
-    if (!state.activeContext.windowName || !state.activeContext.tabName) {
-      const contextEl = document.querySelector('[window_classname]');
-      if (contextEl && !state.activeContext.windowName) {
-        state.activeContext.windowName = contextEl.getAttribute('window_classname') || undefined;
-      }
-      const activeTab = document.querySelector('.active[data-menu-item], [aria-selected="true"][data-menu-item]') as HTMLElement;
-      if (activeTab && activeTab.dataset.menuItem && !state.activeContext.tabName) {
-        state.activeContext.tabName = activeTab.dataset.menuItem;
-      }
-    }
-
-    // Global Hotkey Binding (Alt+A)
-    if (!state.hotkeyBound) {
-      window.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.altKey && e.key.toLowerCase() === 'a') {
-          const anchor = findAnchorInput();
-          if (anchor) {
-            e.preventDefault();
-            const container = getContainerSelector(anchor);
-            openSandbox(container, !anchor.id.toLowerCase().includes('address1'));
-          }
-        }
-      });
-      state.hotkeyBound = true;
-    }
-
-    // Automated Duplicate Check Attachment:
-    // Find all visible address1 inputs and attach a blur listener to trigger duplicate checks.
-    // This handles both manual entry and automated updates from the Sandbox.
-    const allInputs = Array.from(document.querySelectorAll('input'));
-    allInputs.forEach((input) => {
-      if (ADDR1_REGEX.test(input.id) && !input.dataset.duplicateCheckAttached) {
-        if (isDebugEnabled()) console.log(LOG_PREFIX, `Attaching duplicate check listener to: ${input.id}`);
-        input.addEventListener('blur', () => {
-          const val = input.value.trim();
-          if (isDebugEnabled()) console.log(LOG_PREFIX, `Blur detected on address1. Value: "${val}". Context Active: ${isAddressContextActive()}, Schemas: ${state.dataWindowSchemas.size}`);
-
-          // Only check if we are in an active address context and have a value
-          if (val && (isAddressContextActive() || state.dataWindowSchemas.size === 0)) {
-            const customerId = getP21Value('customer_id');
-            if (isDebugEnabled()) console.log(LOG_PREFIX, `Triggering duplicate check for: ${val} (Customer: ${customerId})`);
-            duplicateCheck(val, customerId as string);
-          }
-        });
-        input.dataset.duplicateCheckAttached = 'true';
-      }
-    });
-
-    const anchor = findAnchorInput();
-
-    // DOM Fallback Logic:
-    // We attach if we found an anchor via XHR-Discovery OR if we found one via DOM-Discovery.
-    // If we have network schemas, we use them to confirm. Otherwise (initial load),
-    // we trust the anchor found by regex patterns in the DOM.
-    if (anchor && (isAddressContextActive() || state.dataWindowSchemas.size === 0)) {
-      const container = getContainerSelector(anchor);
-
-      // Attach to name field (with includeName = true)
-      if (ADDR_NAME_REGEX.test(anchor.id)) {
-        attachSandboxLauncher(anchor as HTMLInputElement, container, true);
-
-        // Also find the sibling address1 field to provide a second entry point
-        const addr1 = Array.from(document.querySelectorAll('input')).find((i) => ADDR1_REGEX.test(i.id) && i.isConnected && i.getClientRects().length > 0);
-        if (addr1) attachSandboxLauncher(addr1, container, false);
-      } else {
-        // Attached directly to address1
-        attachSandboxLauncher(anchor as HTMLInputElement, container, false);
-      }
-    } else if ((isAddressContextActive() || state.dataWindowSchemas.size === 0) && retryCount < 15) {
-      // Retry discovery if elements aren't ready yet, even without XHR context.
-      setTimeout(() => discoverAndAttachAddressUI(retryCount + 1), 300);
-    }
-  } finally {
-    state.isInitializingUI = false;
-  }
-};
-
-/**
- * Internal helper to find the best candidate for an address anchor.
- */
-const findAnchorInput = (): HTMLElement | null => {
-  if (isDebugEnabled()) console.log(LOG_PREFIX, 'findAnchorInput: Attempting to find anchor input...');
-
-  // 1. XHR-Prioritized Discovery: Use server-reported active context to find precise elements
-  const { tabName, dataWindow } = state.activeContext;
-  if (tabName && dataWindow) {
-    if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: XHR context active: tabName=${tabName}, dataWindow=${dataWindow}`);
-    const fullDwName = `${tabName}.${dataWindow}`;
-    const schema = state.dataWindowSchemas.get(fullDwName);
-    if (schema) {
-      if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: Schema found for ${fullDwName}. Fields:`, Array.from(schema));
-      // Use regex to find the best anchor field name directly from the schema keys
-      const anchorFieldName = Array.from(schema).find((f) => ADDR_NAME_REGEX.test(f) || ADDR1_REGEX.test(f));
-      if (anchorFieldName) {
-        if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: Anchor field name identified from schema: ${anchorFieldName}`);
-        const preciseId = `${fullDwName}.${anchorFieldName}`;
-        let el = document.getElementById(preciseId);
-        if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: Attempting to find element by precise ID: ${preciseId}. Found:`, !!el);
-        if (!el) {
-          const dwContainer = document.querySelector(`[id="${fullDwName}"]`);
-          if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: Direct ID not found. Searching within container [id="${fullDwName}"]. Found container:`, !!dwContainer);
-          el = dwContainer?.querySelector(`input[id$=".${anchorFieldName}"]`) as HTMLElement;
-          if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: Found element within container:`, !!el);
-        }
-        if (el instanceof HTMLInputElement && isFieldEnabled(el) && el.isConnected && el.getClientRects().length > 0) {
-          if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: XHR-prioritized anchor input found and enabled:`, el, `(Source: XHR)`);
-          return el;
-        } else if (isDebugEnabled()) {
-          let reason = [];
-          if (!el) reason.push('Element not found');
-          else {
-            if (!(el instanceof HTMLInputElement)) reason.push('Not an input element');
-            if (!isFieldEnabled(el)) reason.push('Not enabled/read-only');
-            if (!el.isConnected) reason.push('Not connected to DOM');
-            if (el.getClientRects().length === 0) reason.push('Not visible (zero client rects)');
-          }
-          console.log(LOG_PREFIX, `findAnchorInput: XHR-prioritized element found but not usable for ID "${preciseId}". Reason(s): ${reason.join(', ')}. Element:`, el);
-        }
-      } else if (isDebugEnabled()) {
-        console.log(LOG_PREFIX, `findAnchorInput: No anchor field name found in schema for ${fullDwName} using ADDR_NAME_REGEX or ADDR1_REGEX.`);
-      }
-    } else if (isDebugEnabled()) {
-      console.log(LOG_PREFIX, `findAnchorInput: No schema found for ${fullDwName}.`);
-    }
-  } else if (isDebugEnabled()) {
-    console.log(LOG_PREFIX, `findAnchorInput: No active XHR context (tabName or dataWindow missing). Falling back to DOM scan.`);
-  }
-
-  // 2. DOM-based Fallback: Scan for fields using regex patterns if XHR metadata is unavailable
-  const allInputs = Array.from(document.querySelectorAll('input'));
-  const nameInput = allInputs.find((i) => ADDR_NAME_REGEX.test(i.id) && isFieldEnabled(i) && i.isConnected && i.getClientRects().length > 0);
-  if (nameInput) {
-    if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: DOM-based anchor input found (Name field):`, nameInput, `(Source: DOM)`);
-    return nameInput;
-  }
-
-  const addr1Input = allInputs.find((i) => ADDR1_REGEX.test(i.id) && isFieldEnabled(i) && i.isConnected && i.getClientRects().length > 0);
-  if (addr1Input) {
-    if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: DOM-based anchor input found (Address1 field):`, addr1Input, `(Source: DOM)`);
-    return addr1Input;
-  }
-
-  if (isDebugEnabled()) console.log(LOG_PREFIX, `findAnchorInput: No usable anchor input found via XHR or DOM scan.`);
-  return null;
-};
-
-// --- Global Event Orchestration ---
-
-// Listen for XHR responses to trigger UI discovery
-window.addEventListener('p21-ext:xhr-response', (event) => {
-  const detail = (event as CustomEvent<{ responseValue?: unknown; url: string; method: string }>).detail;
-  const response = detail.responseValue as P21DesignResponse;
-
-  // Safety guard: ensure we have a valid object to inspect.
-  if (!response || typeof response !== 'object') return;
-
-  if (detail.method === 'PUT' || detail.method === 'PATCH') return;
-
-  trackActiveContext(response, detail.url);
-
-  // Structural actions (Clear, Save, Design) cause heavy DOM churn.
-  const isStructuralRescan = detail.url.includes('Quick.Clear') || detail.url.includes('Quick.Save') || detail.url.includes('/design') || Boolean(response.Result);
-
-  if (isAddressRelated(response) || isStructuralRescan || detail.url.includes('/history')) {
-    if (isStructuralRescan) {
-      // Structural resets take longer to finalize in the DOM than incremental data loads.
-      setTimeout(() => discoverAndAttachAddressUI(), 300);
-    } else {
-      discoverAndAttachAddressUI();
-    }
-  }
-});
-
-// Listen for Action Monitor events (Tab changes)
-window.addEventListener('p21-ext:action-monitor-event', (event: any) => {
-  const { name } = event.detail;
-  if (name?.includes('selectionchanged')) {
-    discoverAndAttachAddressUI(); // Removed delay for immediate response
-  }
-});
-
 // New helper to get field metadata
 export const getFieldMetadata = (fullDwName: string, fieldName: string): FieldMetadata | undefined => {
   const windowName = state.activeContext.windowName;
@@ -520,6 +335,7 @@ const processDataWindowProperties = (propertiesContainer: P21DataWindowPropertie
   if (!dataWindowFieldMetadataMap) {
     dataWindowFieldMetadataMap = new Map();
     state.windowFieldProperties.set(currentWindowName, dataWindowFieldMetadataMap);
+    if (isDebugEnabled()) console.debug(LOG_PREFIX, 'State: windowFieldProperties map initialized for', currentWindowName);
   }
 
   // Step 1: Build a map from dwname to its fullDwName (e.g., "items" -> "TP_ITEMS.items")

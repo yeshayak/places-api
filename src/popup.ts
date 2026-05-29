@@ -1,4 +1,4 @@
-// Handles saving and loading API key from chrome.storage.sync and requesting site permissions
+// Handles saving and loading API key from extension storage and requesting site permissions
 
 document.addEventListener('DOMContentLoaded', () => {
   const apiKeyInput = document.getElementById('apiKey') as HTMLInputElement;
@@ -10,30 +10,23 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.storage.local.get(['apiKey'], (result) => {
     if (result.apiKey) {
       apiKeyInput.value = result.apiKey;
-      // Mirror to localStorage
-      localStorage.setItem('gatorPlacesApiKey', result.apiKey);
-      console.log('[Popup] Loaded API key from chrome.storage.local and mirrored to localStorage');
     }
   });
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const apiKey = apiKeyInput.value.trim();
-    // Write to chrome.storage.local
     chrome.storage.local.set({ apiKey }, () => {
-      // Mirror to localStorage
-      try {
-        localStorage.setItem('gatorPlacesApiKey', apiKey);
-        console.log('[Popup] Saved API key to chrome.storage.local and mirrored to localStorage');
-        statusDiv.textContent = 'Settings saved!';
-        setTimeout(() => (statusDiv.textContent = ''), 2000);
-      } catch (err) {
+      if (chrome.runtime.lastError) {
         statusDiv.textContent = 'Error saving key.';
         statusDiv.style.color = 'red';
+        return;
       }
+
+      statusDiv.textContent = 'Settings saved!';
+      statusDiv.style.color = 'green';
+      setTimeout(() => (statusDiv.textContent = ''), 2000);
     });
-    // Optionally, send to background/content if needed
-    chrome.runtime.sendMessage({ type: 'STORE_KEY', apiKey });
   });
 
   // Handle "Enable on this site" button click to request host permissions

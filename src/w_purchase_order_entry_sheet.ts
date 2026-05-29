@@ -1,5 +1,5 @@
 /// <reference types="angular" />
-import { getUserSession } from './utils/userSession';
+import { getUserSession } from './utils/user-session';
 
 type RootScope = AngularScope & {
   windowData: {
@@ -55,15 +55,15 @@ const handleSupplierCostUpdate = (target: EventTarget | null): void => {
     const confirmUpdate = confirm(`The unit price has changed to ${cost}. Do you want to update the supplier cost?`);
 
     if (confirmUpdate) {
-      console.log(`Supplier cost updated to: ${cost}`);
+      console.info(`Supplier cost updated to: ${cost}`);
 
       // Variables for token, supplier_id, item_id, and base URL
       const supplier_id = root.windowData['TABPAGE_1.tp_1_dw_1'][0].vendor_supplier_id;
       const item_id = targetScope.dataItem.item_id;
-      console.log('Token:', token);
-      console.log('Supplier ID:', supplier_id);
-      console.log('Item ID:', item_id);
-      console.log('Cost:', cost);
+      console.debug('Token:', token);
+      console.debug('Supplier ID:', supplier_id);
+      console.debug('Item ID:', item_id);
+      console.debug('Cost:', cost);
 
       // Prepare headers
       const myHeaders = new Headers();
@@ -124,10 +124,10 @@ const handleSupplierCostUpdate = (target: EventTarget | null): void => {
       // Send the POST request
       fetch(`${p21SoaUrl}/uiserver0/api/v2/transaction`, requestOptions)
         .then((response) => response.text())
-        .then((result) => console.log('Update result:', result))
+        .then((result) => console.info('Update result:', result))
         .catch((error) => console.error('Error updating supplier cost:', error));
     } else {
-      console.log('Supplier cost update canceled.');
+      console.info('Supplier cost update canceled.');
     }
   }
 };

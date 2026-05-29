@@ -1,4 +1,4 @@
-import { discoverAndAttachAddressUI } from './p21-data-endpoint';
+import { discoverAndAttachAddressUI } from './address-autocomplete-ui';
 
 /**
  * Ship To Maintenance entry point.

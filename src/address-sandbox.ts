@@ -1,5 +1,5 @@
 /// <reference types="google.maps" />
-import { loadGoogleMaps } from './utils/loadMap';
+import { loadGoogleMaps } from './utils/load-map';
 
 /**
  * This script runs inside the extension iframe.
@@ -7,7 +7,7 @@ import { loadGoogleMaps } from './utils/loadMap';
  */
 window.addEventListener('message', async (event) => {
   if (event.data?.type === 'INIT_SANDBOX' && event.data.apiKey) {
-    await initAutocomplete(event.data.apiKey);
+    await initAutocomplete(event.data.apiKey, event.data.initialValue);
   }
 });
 
@@ -15,7 +15,7 @@ window.addEventListener('message', async (event) => {
  * Initializes the modern Google Places Autocomplete element and sets up event listeners.
  * @param apiKey - The Google Maps API key provided by the parent window.
  */
-async function initAutocomplete(apiKey: string): Promise<void> {
+async function initAutocomplete(apiKey: string, initialValue?: string): Promise<void> {
   await loadGoogleMaps(apiKey);
 
   // Import the modern Places library
@@ -32,6 +32,26 @@ async function initAutocomplete(apiKey: string): Promise<void> {
     oldInput.replaceWith(autocompleteElement);
   } else {
     container?.appendChild(autocompleteElement);
+  }
+
+  // If an initial value was provided, inject it into the internal input of the web component
+  if (initialValue) {
+    let attempts = 0;
+    const injectValue = () => {
+      const internalInput = (autocompleteElement as any).shadowRoot?.querySelector('input');
+      if (internalInput) {
+        internalInput.value = initialValue;
+        // Trigger input event so the Google component acknowledges the value change
+        internalInput.dispatchEvent(new Event('input', { bubbles: true }));
+        // Focus the input to prepare for user interaction
+        internalInput.focus();
+      } else if (attempts < 10) {
+        attempts++;
+        setTimeout(injectValue, 100);
+      }
+    };
+
+    setTimeout(injectValue, 200);
   }
 
   // Shift focus from the old placeholder to the new Google component.

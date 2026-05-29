@@ -28,9 +28,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "injectKey.js",
-        "utils/loadMap.js",
-        "autocomplete.js",
+        "utils/load-map.js",
         "p21-data-endpoint.js",
         "w_order_entry_sheet.js",
         "w_ship_to_sheet.js",
@@ -39,16 +37,19 @@
         "w_purchase_order_entry_sheet.js",
         "xhr-monitor.js",
         "action-monitor.js",
+        "p21-context-monitor.js",
+        "address-autocomplete-ui.js",
+        "address-field-patterns.js",
         "follow-up-requests.js",
         "automation-rules.js",
         "utils/matcher-utils.js",
         "utils/request-parser.js",
         "utils/p21-session.js",
-        "utils/userSession.js",
-        "utils/duplicateCheck.js",
-        "sandbox-autocomplete.js",
+        "utils/user-session.js",
+        "utils/duplicate-check.js",
+        "address-sandbox-launcher.js",
         "sandbox.html",
-        "sandbox.js"
+        "address-sandbox.js"
       ],
       "matches": ["<all_urls>"]
     }

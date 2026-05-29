@@ -1,5 +1,5 @@
 /// <reference types="angular" />
-import { getUserSession } from './userSession';
+import { getUserSession } from './user-session';
 
 interface ODataResponse {
   '@odata.count': number;

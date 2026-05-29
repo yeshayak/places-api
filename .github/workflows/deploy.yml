@@ -15,6 +15,22 @@ on:
         options:
           - production
           - dev
+      version_bump:
+        description: Version segment to bump
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -24,6 +40,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync branch
+        shell: bash
+        run: |
+          git checkout "${{ github.ref_name }}"
+          git pull --ff-only origin "${{ github.ref_name }}"
 
       - name: Resolve deployment target
         id: target
@@ -44,10 +68,24 @@ jobs:
             echo "target=production" >> "$GITHUB_OUTPUT"
             echo "manifest=public/manifest.json" >> "$GITHUB_OUTPUT"
             echo "artifact_name=p21-helper-production" >> "$GITHUB_OUTPUT"
+            echo "tag_prefix=v" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
           else
             echo "target=dev" >> "$GITHUB_OUTPUT"
             echo "manifest=public/manifest.dev.json" >> "$GITHUB_OUTPUT"
             echo "artifact_name=p21-helper-dev" >> "$GITHUB_OUTPUT"
+            echo "tag_prefix=v" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve version bump
+        id: bump
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "type=${{ inputs.version_bump }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=patch" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Setup Node
@@ -58,6 +96,91 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Bump extension version
+        id: version
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const bumpType = process.env.BUMP_TYPE;
+          const target = process.env.TARGET;
+          const packagePath = 'package.json';
+          const packageLockPath = 'package-lock.json';
+          const manifestPaths = ['public/manifest.json', 'public/manifest.dev.json'];
+
+          const readJson = (path) => JSON.parse(fs.readFileSync(path, 'utf8'));
+          const writeJson = (path, value) => fs.writeFileSync(path, JSON.stringify(value, null, 2) + '\n');
+
+          const parseVersion = (value) => {
+            const match = String(value || '0.0.0').match(/^(\d+)\.(\d+)\.(\d+)(?:-dev-(\d+))?$/);
+            if (!match) {
+              throw new Error(`Unsupported version format: ${value}`);
+            }
+
+            return {
+              major: Number.parseInt(match[1], 10),
+              minor: Number.parseInt(match[2], 10),
+              patch: Number.parseInt(match[3], 10),
+              devNumber: match[4] ? Number.parseInt(match[4], 10) : undefined,
+            };
+          };
+
+          const bumpBase = (version) => {
+            const next = { ...version, devNumber: undefined };
+            if (bumpType === 'major') {
+              next.major += 1;
+              next.minor = 0;
+              next.patch = 0;
+            } else if (bumpType === 'minor') {
+              next.minor += 1;
+              next.patch = 0;
+            } else {
+              next.patch += 1;
+            }
+            return next;
+          };
+
+          const formatBase = (version) => `${version.major}.${version.minor}.${version.patch}`;
+
+          const packageJson = readJson(packagePath);
+          const current = parseVersion(packageJson.version);
+          const isDevIncrement = target === 'dev' && bumpType === 'patch' && current.devNumber !== undefined;
+          const nextBase = isDevIncrement ? current : bumpBase(current);
+          const numericVersion = formatBase(nextBase);
+          const nextVersion = target === 'dev' ? `${numericVersion}-dev-${isDevIncrement ? current.devNumber + 1 : 1}` : numericVersion;
+
+          packageJson.version = nextVersion;
+          writeJson(packagePath, packageJson);
+
+          if (fs.existsSync(packageLockPath)) {
+            const packageLock = readJson(packageLockPath);
+            packageLock.version = nextVersion;
+            if (packageLock.packages?.['']) {
+              packageLock.packages[''].version = nextVersion;
+            }
+            writeJson(packageLockPath, packageLock);
+          }
+
+          for (const manifestPath of manifestPaths) {
+            const manifest = readJson(manifestPath);
+            manifest.version = numericVersion;
+            if (target === 'dev' && manifestPath.endsWith('manifest.dev.json')) {
+              manifest.version_name = nextVersion;
+            } else {
+              delete manifest.version_name;
+            }
+            writeJson(manifestPath, manifest);
+          }
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${nextVersion}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `manifest_version=${numericVersion}\n`);
+          console.log(`Bumped version to ${nextVersion}`);
+          NODE
+        env:
+          BUMP_TYPE: ${{ steps.bump.outputs.type }}
+          TARGET: ${{ steps.target.outputs.target }}
 
       - name: Type-check
         run: npm run type-check
@@ -71,11 +194,6 @@ jobs:
           cp "${{ steps.target.outputs.manifest }}" dist/manifest.json
           rm -f dist/manifest.dev.json
 
-      - name: Set deployment version
-        shell: bash
-        run: |
-          node -e "const fs=require('fs'); const manifestPath='dist/manifest.json'; const packageVersion=require('./package.json').version; const parts=packageVersion.split('.').slice(0,3); while (parts.length < 3) parts.push('0'); parts.push(process.env.GITHUB_RUN_NUMBER); const manifest=JSON.parse(fs.readFileSync(manifestPath,'utf8')); manifest.version=parts.join('.'); fs.writeFileSync(manifestPath, JSON.stringify(manifest,null,2) + '\n'); console.log('manifest.version=' + manifest.version);"
-
       - name: Package extension
         shell: bash
         run: |
@@ -88,6 +206,24 @@ jobs:
           name: ${{ steps.target.outputs.artifact_name }}
           path: ${{ steps.target.outputs.artifact_name }}.zip
           if-no-files-found: error
+
+      - name: Commit version bump
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json public/manifest.json public/manifest.dev.json
+          git commit -m "Bump version to ${{ steps.version.outputs.version }} [skip ci]"
+          git push origin "HEAD:${{ github.ref_name }}"
+
+      - name: Create release tag
+        id: tag
+        shell: bash
+        run: |
+          TAG="${{ steps.target.outputs.tag_prefix }}${{ steps.version.outputs.version }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Request Chrome Web Store access token
         id: auth
@@ -119,10 +255,14 @@ jobs:
             EXTENSION_ID="$CWS_EXTENSION_ID_DEV"
           fi
 
-          UPLOAD_RESPONSE="$(curl --fail-with-body -sS -X POST \
+          if ! UPLOAD_RESPONSE="$(curl --fail-with-body -sS -X POST \
             -H "Authorization: Bearer ${{ steps.auth.outputs.access_token }}" \
-            -T "${{ steps.target.outputs.artifact_name }}.zip" \
-            "https://chromewebstore.googleapis.com/upload/v2/publishers/${{ secrets.CWS_PUBLISHER_ID }}/items/$EXTENSION_ID:upload")"
+            -H "Content-Type: application/zip" \
+            --data-binary "@${{ steps.target.outputs.artifact_name }}.zip" \
+            "https://chromewebstore.googleapis.com/upload/v2/publishers/${{ secrets.CWS_PUBLISHER_ID }}/items/$EXTENSION_ID:upload" 2>&1)"; then
+            echo "$UPLOAD_RESPONSE" >&2
+            exit 1
+          fi
 
           echo "$UPLOAD_RESPONSE"
           UPLOAD_STATE="$(echo "$UPLOAD_RESPONSE" | jq -r '.uploadState // empty')"
@@ -133,9 +273,12 @@ jobs:
             fi
 
             sleep 15
-            STATUS_RESPONSE="$(curl --fail-with-body -sS \
+            if ! STATUS_RESPONSE="$(curl --fail-with-body -sS \
               -H "Authorization: Bearer ${{ steps.auth.outputs.access_token }}" \
-              "https://chromewebstore.googleapis.com/v2/publishers/${{ secrets.CWS_PUBLISHER_ID }}/items/$EXTENSION_ID:fetchStatus")"
+              "https://chromewebstore.googleapis.com/v2/publishers/${{ secrets.CWS_PUBLISHER_ID }}/items/$EXTENSION_ID:fetchStatus" 2>&1)"; then
+              echo "$STATUS_RESPONSE" >&2
+              exit 1
+            fi
             echo "$STATUS_RESPONSE"
             UPLOAD_STATE="$(echo "$STATUS_RESPONSE" | jq -r '.lastAsyncUploadState // empty')"
           done
@@ -157,6 +300,20 @@ jobs:
             EXTENSION_ID="$CWS_EXTENSION_ID_DEV"
           fi
 
-          curl --fail-with-body -sS -X POST \
+          if ! PUBLISH_RESPONSE="$(curl --fail-with-body -sS -X POST \
             -H "Authorization: Bearer ${{ steps.auth.outputs.access_token }}" \
-            "https://chromewebstore.googleapis.com/v2/publishers/${{ secrets.CWS_PUBLISHER_ID }}/items/$EXTENSION_ID:publish"
+            "https://chromewebstore.googleapis.com/v2/publishers/${{ secrets.CWS_PUBLISHER_ID }}/items/$EXTENSION_ID:publish" 2>&1)"; then
+            echo "$PUBLISH_RESPONSE" >&2
+            exit 1
+          fi
+
+          echo "$PUBLISH_RESPONSE"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name }}
+          prerelease: ${{ steps.target.outputs.prerelease }}
+          files: ${{ steps.target.outputs.artifact_name }}.zip
+          generate_release_notes: true

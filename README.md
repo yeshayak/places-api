@@ -31,9 +31,8 @@ A Chrome extension that integrates Google Places API with Prophet 21 windows for
 
 ### Build Commands
 
-- **Development build**: `npm run build:dev`
 - **Production build**: `npm run build`
-- **Development with watch**: `npm run dev`
+- **Development with watch**: `npm run watch`
 - **Type checking**: `npm run type-check`
 - **Clean build**: `npm run clean`
 
@@ -42,10 +41,10 @@ A Chrome extension that integrates Google Places API with Prophet 21 windows for
 1. **Start development mode**:
 
    ```bash
-   npm run dev
+   npm run watch
    ```
 
-   This will watch for file changes and rebuild automatically.
+   This will watch TypeScript files and rebuild emitted JavaScript.
 
 2. **Build for production**:
 
@@ -62,31 +61,32 @@ A Chrome extension that integrates Google Places API with Prophet 21 windows for
 
 ```
 src/
+├── action-monitor.ts             # P21 action/event monitor
+├── address-autocomplete-ui.ts    # Address field discovery and UI hooks
+├── address-field-patterns.ts     # Address field matching patterns
+├── address-sandbox.ts            # Sandboxed Google Places UI
+├── address-sandbox-launcher.ts   # P21 page modal/iframe launcher
+├── automation-rules.ts           # Network automation rule definitions
 ├── background.ts          # Service worker background script
 ├── content.ts            # Content script for page injection
-├── loadMap.ts            # Google Maps API loader
+├── follow-up-requests.ts # Internal P21 follow-up request transport
+├── p21-context-monitor.ts # Data context tracking from XHR monitor events
+├── p21-data-endpoint.ts  # P21 state, schemas, and field update actions
 ├── popup.ts              # Extension popup logic
-├── autocomplete.ts       # Places Autocomplete functionality
-├── w_*.ts               # Prophet 21 window-specific scripts
+├── xhr-monitor.ts        # XMLHttpRequest watcher
+├── w_*.ts                # Prophet 21 window-specific scripts
 └── utils/               # Utility functions
-    ├── duplicateCheck.ts
-    └── userSession.ts
+    ├── duplicate-check.ts
+    ├── load-map.ts
+    ├── matcher-utils.ts
+    ├── p21-session.ts
+    ├── request-parser.ts
+    └── user-session.ts
 ```
 
 ## Build Configuration
 
-The project uses **Webpack** as the bundler with the following features:
-
-- **TypeScript compilation** with ts-loader
-- **Multiple entry points** for different extension components
-- **Asset copying** for static files (HTML, CSS, images)
-- **Source maps** for debugging
-- **Code optimization** for production builds
-
-### Webpack Configuration Files
-
-- `webpack.config.js` - Base configuration
-- `webpack.dev.js` - Development-specific overrides
+The project uses `tsc` to emit ES modules into `dist/`, then copies static files from `public/` and rewrites emitted relative imports for Chrome extension runtime loading.
 
 ## Deployment
 
@@ -101,7 +101,7 @@ The extension requires a Google Maps API key to be stored in Chrome's local stor
 ## Contributing
 
 1. Make changes to TypeScript files in the `src/` directory
-2. Run `npm run dev` for development with auto-rebuild
+2. Run `npm run watch` for development with auto-rebuild
 3. Test changes in Chrome
 4. Run `npm run build` before committing
 

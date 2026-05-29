@@ -10,6 +10,7 @@ interface ActionMonitorWindow extends Window {
     fire: typeof fireP21Action;
     trigger: typeof triggerDomEvent;
     inspect: typeof inspectElement;
+    triggerTabChange: typeof triggerTabChange;
   };
   angular?: any;
 }
@@ -311,6 +312,15 @@ export const fireP21Action = (eventName: string, data: any = {}) => {
   }
 };
 
+/**
+ * Triggers a tab change by simulating a click on the tab element.
+ * @param tabName The unique name of the tab (e.g., 'TP_REMITTANCES').
+ */
+export const triggerTabChange = (tabName: string) => {
+  const selectors = [`[panename="${tabName}"]`, `[data-menu-item="${tabName}"]`];
+  triggerDomEvent(selectors.join(', '), 'click');
+};
+
 if (!monitorWindow.__p21ActionMonitorInstalled) {
   monitorWindow.__p21ActionMonitorInstalled = true;
   setupDomObservation();
@@ -321,5 +331,6 @@ if (!monitorWindow.__p21ActionMonitorInstalled) {
     fire: fireP21Action,
     trigger: triggerDomEvent,
     inspect: inspectElement,
+    triggerTabChange,
   };
 }

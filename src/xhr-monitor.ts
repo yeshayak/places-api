@@ -252,12 +252,12 @@ const logIfEnabled = (shouldLog: boolean, event: Record<string, unknown>): void 
     return;
   }
 
-  console.log(LOG_PREFIX, event);
+  console.debug(LOG_PREFIX, event);
 };
 
 const logRelevant = (event: Record<string, unknown>): void => {
   if (isDebugEnabled() || isFullDebugEnabled()) {
-    console.log(LOG_PREFIX, event);
+    console.debug(LOG_PREFIX, event);
   }
 };
 

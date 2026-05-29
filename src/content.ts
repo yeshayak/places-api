@@ -36,31 +36,23 @@
     });
   };
 
-  // Get API key from localStorage, fallback to chrome.storage.local if missing/stale
-  const setupApiKey = async (): Promise<void> => {
-    let apiKey = localStorage.getItem('gatorPlacesApiKey');
-    if (apiKey && apiKey.trim()) {
-      window.postMessage({ type: 'GATOR_API_KEY', apiKey }, '*');
-      console.log('[Content] API key loaded from localStorage');
-    } else if (isContextValid()) {
-      // Fallback: request from chrome.storage.local
-      chrome.storage.local.get(['apiKey'], (result) => {
-        if (!isContextValid()) return;
+  window.addEventListener('message', (event) => {
+    if (event.source !== window || event.data?.type !== 'P21_EXT_REQUEST_API_KEY') return;
+    if (!isContextValid()) return;
 
-        if (result.apiKey && result.apiKey.trim()) {
-          localStorage.setItem('gatorPlacesApiKey', result.apiKey);
-          window.postMessage({ type: 'GATOR_API_KEY', apiKey: result.apiKey }, '*');
-          console.log('[Content] Healed localStorage from chrome.storage.local');
-        } else {
-          console.error('[Content] Failed to heal localStorage: API key not found in chrome.storage.local');
-        }
-      });
-    }
-    // ...existing code...
-  };
+    const requestId = event.data.requestId;
+    chrome.storage.local.get(['apiKey'], (result) => {
+      if (!isContextValid()) return;
 
-  // Setup API key and inject core scripts
-  setupApiKey();
+      const apiKey = typeof result.apiKey === 'string' ? result.apiKey.trim() : '';
+      window.postMessage(
+        apiKey
+          ? { type: 'P21_EXT_API_KEY_RESPONSE', requestId, apiKey }
+          : { type: 'P21_EXT_API_KEY_RESPONSE', requestId, error: 'Google Maps API key not found in extension storage' },
+        '*',
+      );
+    });
+  });
 
   // Mapping for dynamic script injection based on page titles
   const scriptMapping: Record<string, string> = {
@@ -103,23 +95,7 @@
     titleObserver.observe(titleElement, { childList: true });
   }
 
-  // Unified message handler
   chrome.runtime.onMessage.addListener((msg) => {
-    // Handle INJECT_KEY
-    if (msg.type === 'INJECT_KEY' && msg.apiKey) {
-      // Inject injectkey.js as a file
-      injectScript(chrome.runtime.getURL('injectKey.js'), 'body')
-        .then(() => {
-          // Pass the API key to the injected script via window.postMessage
-          window.postMessage({ type: 'GATOR_API_KEY', apiKey: msg.apiKey }, '*');
-        })
-        .catch((error) => {
-          console.error('Failed to inject injectKey.js:', error);
-        });
-      return;
-    }
-
-    // Handle dynamic script injection by title
     if (msg.changeInfo?.title) {
       injectForTitle(msg.changeInfo.title);
     }

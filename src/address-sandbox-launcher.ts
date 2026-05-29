@@ -56,10 +56,37 @@ const styles = `
   }
 `;
 
+const getApiKey = (): Promise<string> => {
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      window.removeEventListener('message', handleResponse);
+      reject(new Error('Timed out waiting for API key from extension storage'));
+    }, 3000);
+
+    function handleResponse(event: MessageEvent) {
+      if (event.source !== window || event.data?.type !== 'P21_EXT_API_KEY_RESPONSE' || event.data.requestId !== requestId) return;
+
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('message', handleResponse);
+
+      if (typeof event.data.apiKey === 'string' && event.data.apiKey.trim()) {
+        resolve(event.data.apiKey.trim());
+      } else {
+        reject(new Error(event.data.error || 'Google Maps API key not found in extension storage'));
+      }
+    }
+
+    window.addEventListener('message', handleResponse);
+    window.postMessage({ type: 'P21_EXT_REQUEST_API_KEY', requestId }, '*');
+  });
+};
+
 /**
  * Attaches a Google Map marker button next to the specified input.
  */
-export const attachSandboxLauncher = (input: HTMLInputElement, containerSelector: string, includeName: boolean) => {
+export const attachSandboxLauncher = (input: HTMLInputElement, containerSelector: string, includeName: boolean, getValue?: () => string) => {
   if (!input || !input.isConnected || input.dataset.sandboxAttached) return;
 
   if (!document.getElementById('p21-sandbox-styles')) {
@@ -122,11 +149,11 @@ export const attachSandboxLauncher = (input: HTMLInputElement, containerSelector
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    openSandbox(containerSelector, includeName);
+    openSandbox(containerSelector, includeName, getValue ? getValue() : input.value);
   });
 };
 
-export const openSandbox = async (containerSelector: string, includeName: boolean) => {
+export const openSandbox = async (containerSelector: string, includeName: boolean, initialValue: string = '') => {
   // Prevent multiple modals from opening simultaneously
   if (document.querySelector('.p21-sandbox-overlay')) return;
 
@@ -171,17 +198,19 @@ export const openSandbox = async (containerSelector: string, includeName: boolea
     document.body.removeChild(overlay);
   };
 
-  // Get the API key to send to the sandbox
-  const apiKey = localStorage.getItem('gatorPlacesApiKey');
-
   const iframeContainer = overlay.querySelector('.p21-iframe-container');
   const iframe = document.createElement('iframe');
   iframe.className = 'p21-sandbox-iframe';
   iframe.onload = () => {
-    if (apiKey) {
-      iframe.focus();
-      iframe.contentWindow?.postMessage({ type: 'INIT_SANDBOX', apiKey }, '*');
-    }
+    getApiKey()
+      .then((apiKey) => {
+        iframe.focus();
+        iframe.contentWindow?.postMessage({ type: 'INIT_SANDBOX', apiKey, initialValue }, '*');
+      })
+      .catch((error) => {
+        console.error('[P21 EXT] Failed to load Google Maps API key:', error);
+        close();
+      });
   };
   iframe.src = sandboxUrl;
   iframeContainer?.appendChild(iframe);

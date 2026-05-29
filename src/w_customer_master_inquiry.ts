@@ -1,4 +1,5 @@
-import { getP21Scope, getActiveTabName, discoverAndAttachAddressUI } from './p21-data-endpoint';
+import { discoverAndAttachAddressUI } from './address-autocomplete-ui';
+import { getP21Scope, getActiveTabName } from './p21-data-endpoint';
 
 type CustomerRecord = {
   customer_id: string;
@@ -48,6 +49,7 @@ const paymentLink = async (): Promise<void> => {
     if (state.lastPaymentLink !== linkValue) {
       console.log(`${LOG_PREFIX} Payment Link updated: ${linkValue}`);
       state.lastPaymentLink = linkValue;
+      console.debug(`${LOG_PREFIX} State update: lastPaymentLink`);
     }
 
     // Update UI elements
@@ -74,6 +76,7 @@ const paymentLink = async (): Promise<void> => {
         );
       });
       state.paymentListenersAttached = true;
+      console.debug(`${LOG_PREFIX} State update: paymentListenersAttached = true`);
     }
   } else {
     // If not on the payment tab, hide the elements

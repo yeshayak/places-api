@@ -1,5 +1,6 @@
 import type { P21DesignResponse } from './utils/p21-session';
-import { getP21Scope, getActiveTabName, discoverAndAttachAddressUI } from './p21-data-endpoint';
+import { discoverAndAttachAddressUI } from './address-autocomplete-ui';
+import { getP21Scope, getActiveTabName } from './p21-data-endpoint';
 
 // Using global AngularScope
 type CustomScope = AngularScope;
@@ -65,7 +66,9 @@ const debouncedPaymentLink = (delay: number): void => {
   state.paymentLinkTimeout = window.setTimeout(() => {
     paymentLink();
     state.paymentLinkTimeout = null;
+    console.debug(`${LOG_PREFIX} State update: paymentLinkTimeout = null`);
   }, delay);
+  console.debug(`${LOG_PREFIX} State update: paymentLinkTimeout set`);
 };
 
 /**
@@ -111,6 +114,7 @@ const paymentLink = async (): Promise<void> => {
     if (state.lastPaymentLink !== linkValue) {
       console.log(`${LOG_PREFIX} Payment Link updated: ${linkValue}`);
       state.lastPaymentLink = linkValue;
+      console.debug(`${LOG_PREFIX} State update: lastPaymentLink`);
     }
 
     linkTextArea.classList.remove('ng-hide');
@@ -138,6 +142,7 @@ const paymentLink = async (): Promise<void> => {
       document.querySelector(SELECTORS.RECALC_TOTALS)?.addEventListener('click', () => setTimeout(paymentLink, 1000));
 
       state.paymentListenersAttached = true;
+      console.debug(`${LOG_PREFIX} State update: paymentListenersAttached = true`);
     }
   }
 };

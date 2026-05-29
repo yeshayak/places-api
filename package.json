@@ -2,6 +2,9 @@
   "name": "places-api",
   "version": "1.0.2-dev-1",
   "description": "Chrome extension for Places API integration",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && tsc && pwsh ./scripts/copy-static.ps1 && pwsh ./scripts/fix-imports.ps1",
@@ -14,7 +17,7 @@
     "@types/google.maps": "^3.58.1",
     "angular": "^1.8.3",
     "prettier": "^3.5.3",
-    "rimraf": "^5.0.5",
+    "rimraf": "^6.0.1",
     "ts-loader": "^9.5.1",
     "typescript": "^5.7.3"
   }

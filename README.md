@@ -18,7 +18,7 @@ A Chrome extension that integrates Google Places API with Prophet 21 windows for
 
 ### Prerequisites
 
-- Node.js (v16 or higher)
+- Node.js (v22 or higher)
 - npm
 
 ### Installation

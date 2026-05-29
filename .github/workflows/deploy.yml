@@ -36,6 +36,8 @@ jobs:
   deploy:
     name: Build and publish
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
@@ -91,7 +93,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -149,7 +151,9 @@ jobs:
           const isDevIncrement = target === 'dev' && bumpType === 'patch' && current.devNumber !== undefined;
           const nextBase = isDevIncrement ? current : bumpBase(current);
           const numericVersion = formatBase(nextBase);
-          const nextVersion = target === 'dev' ? `${numericVersion}-dev-${isDevIncrement ? current.devNumber + 1 : 1}` : numericVersion;
+          const devNum = isDevIncrement ? current.devNumber + 1 : 1;
+          const nextVersion = target === 'dev' ? `${numericVersion}-dev-${devNum}` : numericVersion;
+          const manifestVersion = target === 'dev' ? `${numericVersion}.${devNum}` : numericVersion;
 
           packageJson.version = nextVersion;
           writeJson(packagePath, packageJson);
@@ -165,7 +169,7 @@ jobs:
 
           for (const manifestPath of manifestPaths) {
             const manifest = readJson(manifestPath);
-            manifest.version = numericVersion;
+            manifest.version = manifestVersion;
             if (target === 'dev' && manifestPath.endsWith('manifest.dev.json')) {
               manifest.version_name = nextVersion;
             } else {
@@ -175,7 +179,7 @@ jobs:
           }
 
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${nextVersion}\n`);
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `manifest_version=${numericVersion}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `manifest_version=${manifestVersion}\n`);
           console.log(`Bumped version to ${nextVersion}`);
           NODE
         env:

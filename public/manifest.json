@@ -4,14 +4,23 @@
   "short_name": "P21 Helper",
   "version": "1.0.2",
   "description": "Enhances Prophet 21 with address lookup, Places autocomplete, duplicate checks, and P21 workflow helpers.",
-  "permissions": ["scripting", "storage", "tabs"],
-  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "permissions": [
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://gatorps.prokeep.com https://places.googleapis.com",
     "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' https://maps.googleapis.com; connect-src 'self' https://maps.googleapis.com https://places.googleapis.com;"
   },
   "sandbox": {
-    "pages": ["sandbox.html"]
+    "pages": [
+      "sandbox.html"
+    ]
   },
   "background": {
     "service_worker": "background.js"
@@ -27,8 +36,14 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["*.js", "utils/*.js", "sandbox.html"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "*.js",
+        "utils/*.js",
+        "sandbox.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

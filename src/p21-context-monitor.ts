@@ -1,17 +1,9 @@
-import type { P21DesignResponse } from './utils/p21-session';
-import { isAddressRelated, trackActiveContext } from './p21-data-endpoint';
+import type { P21DesignResponse, P21DataContextUpdatedDetail } from './types/p21-types';
+import { trackActiveContext } from './state-store';
+import { isAddressRelated } from './endpoint-router';
 
 interface P21ContextMonitorWindow extends Window {
   __p21ContextMonitorInstalled?: boolean;
-}
-
-export interface P21DataContextUpdatedDetail {
-  response: P21DesignResponse;
-  url: string;
-  method: string;
-  isAddressRelated: boolean;
-  isStructuralRescan: boolean;
-  isHistoryNavigation: boolean;
 }
 
 const contextMonitorWindow = window as P21ContextMonitorWindow;
@@ -28,11 +20,6 @@ export const installP21ContextMonitor = (): void => {
     if (detail.method === 'PUT' || detail.method === 'PATCH') return;
 
     trackActiveContext(response, detail.url);
-
-    // P21 returns Result for many non-structural requests. We exclude them to reduce noise.
-    const isStructuralRescan =
-      detail.url.includes('Quick.Clear') || detail.url.includes('Quick.Save') || detail.url.includes('/design') || (Boolean(response.Result) && !detail.url.includes('fastedit/settings') && !detail.url.includes('/ui/common/v1/alerts'));
-
     window.dispatchEvent(
       new CustomEvent<P21DataContextUpdatedDetail>('p21-ext:data-context-updated', {
         detail: {
@@ -40,7 +27,7 @@ export const installP21ContextMonitor = (): void => {
           url: detail.url,
           method: detail.method,
           isAddressRelated: isAddressRelated(response),
-          isStructuralRescan,
+          isStructuralRescan: detail.url.includes('/design') || Boolean(response.Result),
           isHistoryNavigation: detail.url.includes('/history'),
         },
       }),

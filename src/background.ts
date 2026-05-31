@@ -10,8 +10,6 @@ const isP21WindowUrl = (url: string | undefined): boolean => Boolean(url && p21W
 
 const sendTabMessage = (tabId: number, message: unknown): void => {
   chrome.tabs.sendMessage(tabId, message, () => {
-    // A P21 tab can emit title updates before content.js has finished injecting.
-    // Reading lastError prevents Chrome from surfacing that expected race as uncaught.
     void chrome.runtime.lastError;
   });
 };
@@ -79,13 +77,14 @@ const ensureContentScript = (tabId: number, url: string, onReady?: () => void): 
  * when a tab navigates or changes titles.
  */
 const handleTabUpdate = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tabInfo: chrome.tabs.Tab): void => {
-  if (!changeInfo.title || !tabInfo.url || !isP21WindowUrl(tabInfo.url) || changeInfo.title === 'Prophet 21') return;
+  if (!changeInfo.title || !tabInfo.url || !isP21WindowUrl(tabInfo.url)) return;
 
   ensureContentScript(tabId, tabInfo.url, () => {
-    // Pass meaningful title updates to the content script for routing.
-    if (changeInfo.title) {
-      sendTabMessage(tabId, { changeInfo, url: tabInfo.url });
-    }
+    sendTabMessage(tabId, {
+      type: 'P21_PAGE_CONTEXT_CHANGE',
+      title: changeInfo.title,
+      url: tabInfo.url,
+    });
 
     console.log('Updated P21 tab: ' + tabId);
     console.log('Changed attributes: ');

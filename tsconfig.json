@@ -19,11 +19,11 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "allowUmdGlobalAccess": true,
-    "typeRoots": ["./node_modules/@types", "./types"],
+    "typeRoots": ["./node_modules/@types"],
     "paths": {
-      "*": ["./src/*", "./types/*"]
+      "*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts", "types/**/*.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

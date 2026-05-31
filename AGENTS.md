@@ -129,8 +129,7 @@ Move from ad-hoc scripts toward:
 
 xhr-monitor.ts
 request-parser.ts
-p21-session.ts
-automation-rules.ts
+p21-types.ts
 ui-hooks.ts
 
 Keep business logic separate from transport logic.

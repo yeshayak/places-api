@@ -1,4 +1,4 @@
-import type { P21DesignResponse, P21EventData } from './utils/p21-session';
+import type { P21DesignResponse, P21EventData } from './types/p21-types';
 
 /**
  * Action Monitor: Intercepts DOM and AngularJS events to map P21 lifecycles.
@@ -179,7 +179,7 @@ const patchAngularEvents = () => {
       });
     });
 
-    console.log(LOG_PREFIX, 'Angular event interception active.');
+    console.info(LOG_PREFIX, 'Angular Monitor: Interception layer active.');
     return true;
   };
 

@@ -1,32 +1,4 @@
-export type P21EndpointKind = 'data' | 'design' | 'grid' | 'grid-state' | 'history' | 'clear' | 'save' | 'transaction' | 'ui-full' | 'unknown';
-
-export interface ParsedP21Request {
-  normalizedUrl: string;
-  path: string;
-  query: Record<string, string>;
-  endpointKind: P21EndpointKind;
-  requestSummary: ParsedP21Payload;
-}
-
-export interface ParsedP21Payload {
-  isJson: boolean;
-  value?: unknown;
-  summary?: P21PayloadSummary;
-  error?: string;
-}
-
-export interface P21PayloadSummary {
-  topLevelKeys?: string[];
-  success?: unknown;
-  dataKeys?: string[];
-  dataInformationKeys?: string[];
-  eventCount?: number;
-  eventNames?: string[];
-  propertyKeys?: string[];
-  resultKeys?: string[];
-  tpItemsCount?: number;
-  tpItemKeys?: string[];
-}
+import type { P21EndpointKind, ParsedP21Request, ParsedP21Payload, P21PayloadSummary } from '../types/request-types';
 
 interface ParseP21RequestInput {
   method: string;
@@ -96,6 +68,9 @@ const classifyEndpoint = (path: string): P21EndpointKind => {
   if (path.includes('/ui/full/v2/window/history')) {
     return 'history';
   }
+  if (path.includes('/window/multiprefs')) {
+    return 'multiprefs';
+  }
   if (path.includes('/ui/full/v1/grid')) {
     return 'grid';
   }
@@ -129,6 +104,18 @@ const parseUrl = (url: string): { normalizedUrl: string; path: string; query: Re
 };
 
 const summarizePayload = (value: unknown): P21PayloadSummary | undefined => {
+  // Detect Preference Arrays (common in /multiprefs responses)
+  const preferences = Array.isArray(value) ? value.filter((v) => isRecord(v) && typeof v.ObjectName === 'string' && typeof v.PreferenceName === 'string') : undefined;
+
+  if (Array.isArray(value)) {
+    return preferences && preferences.length > 0
+      ? {
+          topLevelKeys: ['Array'],
+          preferences: preferences as any,
+        }
+      : undefined;
+  }
+
   if (!isRecord(value)) return undefined;
 
   const data = getRecord(value.Data);
@@ -136,6 +123,7 @@ const summarizePayload = (value: unknown): P21PayloadSummary | undefined => {
   const properties = getRecord(value.Properties);
   const result = getRecord(value.Result);
   const events = Array.isArray(value.Events) ? value.Events : undefined;
+  const messages = Array.isArray(value.Messages) ? value.Messages : undefined;
   const tpItems = extractTpItems(value);
 
   return {
@@ -152,6 +140,8 @@ const summarizePayload = (value: unknown): P21PayloadSummary | undefined => {
     resultKeys: result ? Object.keys(result) : undefined,
     tpItemsCount: tpItems?.length,
     tpItemKeys: tpItems?.[0] && isRecord(tpItems[0]) ? Object.keys(tpItems[0]) : undefined,
+    messagesCount: messages?.length,
+    preferences: preferences as any,
   };
 };
 

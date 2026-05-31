@@ -1,6 +1,5 @@
-import { evaluateAutomationRules } from './automation-rules';
-import { isFollowUpXhr, subscribeFollowUpResult } from './follow-up-requests';
-import { parseP21Payload, parseP21Request, type ParsedP21Payload } from './utils/request-parser';
+import { parseP21Payload, parseP21Request } from './utils/request-parser';
+import type { ParsedP21Payload } from './types/request-types';
 
 interface XhrWatcherOptions {
   debug?: boolean;
@@ -13,7 +12,6 @@ interface XhrContext {
   async?: boolean;
   requestHeaders: Record<string, string>;
   requestBody?: unknown;
-  isFollowUp?: boolean;
   shouldLog?: boolean;
 }
 
@@ -31,7 +29,6 @@ interface P21XhrResponseEventDetail {
 }
 
 const LOG_PREFIX = '[P21 EXT]';
-const DEBUG_KEY = 'p21ExtDebug';
 const DEBUG_FULL_KEY = 'p21ExtDebugFull';
 const watcherWindow = window as WatcherWindow;
 
@@ -75,7 +72,6 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
 
     if (context) {
       context.requestBody = body;
-      context.isFollowUp = isFollowUpXhr(this);
 
       const parsedRequest = parseP21Request({
         method: context.method,
@@ -103,21 +99,6 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
           url: context.url,
           body: bodyToLoggableValue(context.requestBody),
         });
-        const automationEvents = context.isFollowUp
-          ? []
-          : evaluateAutomationRules({
-              requestId: context.requestId,
-              method: context.method,
-              request: latestRequest,
-              response: responseSummary,
-              sourceRequest: {
-                method: context.method,
-                url: context.url,
-                body: bodyToLoggableValue(context.requestBody),
-                headers: { ...context.requestHeaders },
-                parsedRequest: latestRequest,
-              },
-            });
 
         dispatchXhrResponseEvent({
           requestId: context.requestId,
@@ -135,40 +116,17 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
           url: latestRequest.normalizedUrl,
           endpointKind: latestRequest.endpointKind,
           headers: context.requestHeaders,
-          isFollowUp: context.isFollowUp,
           requestSummary: latestRequest.requestSummary.summary,
           responseSummary: responseSummary.summary,
-          automationEvents,
           parseErrors: [...collectParseErrors(latestRequest.requestSummary), ...collectParseErrors(responseSummary)],
         });
-
-        for (const automationEvent of automationEvents) {
-          logRelevant({
-            type: 'automation-match',
-            event: automationEvent.type,
-            ruleId: automationEvent.ruleId,
-            requestId: automationEvent.requestId,
-            url: automationEvent.url,
-            evidence: automationEvent.evidence,
-          });
-        }
       });
     }
 
     return nativeSend.call(this, body ?? null);
   };
 
-  logIfEnabled(true, {
-    type: 'xhr-watcher-installed',
-    requestId: undefined,
-    method: undefined,
-    url: window.location.href,
-    endpointKind: undefined,
-    session: undefined,
-    requestSummary: undefined,
-    responseSummary: undefined,
-    parseErrors: [],
-  });
+  console.info(LOG_PREFIX, 'Network Monitor: Interceptor installed.');
 };
 
 const dispatchXhrResponseEvent = (detail: P21XhrResponseEventDetail): void => {
@@ -178,18 +136,6 @@ const dispatchXhrResponseEvent = (detail: P21XhrResponseEventDetail): void => {
     }),
   );
 };
-
-subscribeFollowUpResult((result) => {
-  logRelevant({
-    type: 'follow-up-result',
-    correlationId: result.correlationId,
-    templateId: result.templateId,
-    reason: result.reason,
-    ok: result.ok,
-    url: result.url,
-    error: result.error,
-  });
-});
 
 const parseResponse = (xhr: XMLHttpRequest): ParsedP21Payload => {
   if (xhr.responseType && xhr.responseType !== 'text' && xhr.responseType !== 'json') {
@@ -240,7 +186,6 @@ const bodyToLoggableValue = (body: unknown): unknown => {
 
 const collectParseErrors = (payload: ParsedP21Payload): string[] => (payload.error ? [payload.error] : []);
 
-const isDebugEnabled = (): boolean => localStorage.getItem(DEBUG_KEY) === 'true';
 const isFullDebugEnabled = (): boolean => localStorage.getItem(DEBUG_FULL_KEY) === 'true';
 
 const shouldLogRequest = (options: XhrWatcherOptions, endpointKind: string): boolean => {
@@ -253,12 +198,6 @@ const logIfEnabled = (shouldLog: boolean, event: Record<string, unknown>): void 
   }
 
   console.debug(LOG_PREFIX, event);
-};
-
-const logRelevant = (event: Record<string, unknown>): void => {
-  if (isDebugEnabled() || isFullDebugEnabled()) {
-    console.debug(LOG_PREFIX, event);
-  }
 };
 
 installXhrWatcher();

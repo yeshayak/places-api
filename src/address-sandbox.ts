@@ -1,6 +1,8 @@
 /// <reference types="google.maps" />
 import { loadGoogleMaps } from './utils/load-map';
 
+const LOG_PREFIX = '[P21 SANDBOX]';
+
 /**
  * This script runs inside the extension iframe.
  * It handles the Google Places interaction and sends data back to the P21 page.
@@ -43,8 +45,6 @@ async function initAutocomplete(apiKey: string, initialValue?: string): Promise<
         internalInput.value = initialValue;
         // Trigger input event so the Google component acknowledges the value change
         internalInput.dispatchEvent(new Event('input', { bubbles: true }));
-        // Focus the input to prepare for user interaction
-        internalInput.focus();
       } else if (attempts < 10) {
         attempts++;
         setTimeout(injectValue, 100);
@@ -54,37 +54,32 @@ async function initAutocomplete(apiKey: string, initialValue?: string): Promise<
     setTimeout(injectValue, 200);
   }
 
-  // Shift focus from the old placeholder to the new Google component.
-  // We use a small timeout to ensure the component is connected and ready.
-  setTimeout(() => autocompleteElement.focus(), 50);
-
-  console.log('[Sandbox] PlaceAutocompleteElement attached to DOM.');
+  console.debug(LOG_PREFIX, 'Places UI: Autocomplete element attached to DOM.');
 
   // Modern API uses the gmp-select event
   autocompleteElement.addEventListener('gmp-select', async (event: { placePrediction: any }) => {
     const { placePrediction } = event;
 
     if (!placePrediction) {
-      console.warn('[Sandbox] Selection event fired without placePrediction data.');
+      console.warn(LOG_PREFIX, 'Event: Selection fired without prediction data.');
       return;
     }
 
     // Convert the prediction to a Place object
     const place = placePrediction.toPlace();
-
-    console.log('[Sandbox] Selection confirmed. Fetching place details...', place.id);
+    console.debug(LOG_PREFIX, `Event: Selection confirmed. Fetching details for: ${place.id}`);
 
     try {
       await place.fetchFields({
         fields: ['id', 'addressComponents', 'displayName', 'formattedAddress', 'types'],
       });
     } catch (error) {
-      console.error('[Sandbox] Failed to fetch place details:', error);
+      console.error(LOG_PREFIX, 'Error: Failed to fetch place details.', error);
       return;
     }
 
     if (!place.addressComponents) {
-      console.warn('[Sandbox] No address components found after fetchFields');
+      console.warn(LOG_PREFIX, 'Error: No address components returned from API.');
       return;
     }
 
@@ -131,7 +126,7 @@ async function initAutocomplete(apiKey: string, initialValue?: string): Promise<
     const establishmentName = place.displayName?.text || (typeof place.displayName === 'string' ? place.displayName : '');
     addressData.name = establishmentName || addressData.address1;
 
-    console.log('[Sandbox] Sending address data back to P21:', addressData);
+    console.info(LOG_PREFIX, 'Selection: Sending verified address to P21 context.', addressData);
 
     // Send message back to the parent window (Content Script)
     window.parent.postMessage(

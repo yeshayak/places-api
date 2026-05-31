@@ -1,4 +1,5 @@
-import { updateAddressFields, type P21AddressUpdateValue } from './p21-data-endpoint';
+import { updateAddressFields } from './p21-data-endpoint';
+import type { P21AddressUpdateValue } from './types/p21-types';
 
 /**
  * Styles for the sandboxed UI
@@ -59,6 +60,11 @@ const styles = `
 const getApiKey = (): Promise<string> => {
   const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+  // Optimization: Check if the key was already embedded in the meta tag for synchronous retrieval
+  const meta = document.querySelector('meta[name="places-api-injected"]');
+  const embeddedKey = meta?.getAttribute('data-api-key');
+  if (embeddedKey) return Promise.resolve(embeddedKey);
+
   return new Promise((resolve, reject) => {
     const timeoutId = window.setTimeout(() => {
       window.removeEventListener('message', handleResponse);
@@ -66,7 +72,8 @@ const getApiKey = (): Promise<string> => {
     }, 3000);
 
     function handleResponse(event: MessageEvent) {
-      if (event.source !== window || event.data?.type !== 'P21_EXT_API_KEY_RESPONSE' || event.data.requestId !== requestId) return;
+      // Relax source check for P21 compatibility; identify via type and requestId
+      if (!event.data || event.data.type !== 'P21_EXT_API_KEY_RESPONSE' || event.data.requestId !== requestId) return;
 
       window.clearTimeout(timeoutId);
       window.removeEventListener('message', handleResponse);
@@ -204,7 +211,8 @@ export const openSandbox = async (containerSelector: string, includeName: boolea
   iframe.onload = () => {
     getApiKey()
       .then((apiKey) => {
-        iframe.focus();
+        // We remove iframe.focus() to avoid "Blocked autofocusing" warnings in cross-origin frames.
+        // The user will interact with the search box directly.
         iframe.contentWindow?.postMessage({ type: 'INIT_SANDBOX', apiKey, initialValue }, '*');
       })
       .catch((error) => {

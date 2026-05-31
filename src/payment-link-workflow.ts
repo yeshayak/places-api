@@ -1,4 +1,5 @@
-import { getActiveTabName, getP21Scope } from './p21-data-endpoint';
+import { getP21Scope } from './p21-data-endpoint';
+import { getActiveContext } from './state-store';
 
 const LOG_PREFIX = '[P21 EXT] [Payment]';
 
@@ -26,7 +27,7 @@ let listenersAttached = false;
  */
 export const initPaymentWorkflow = (config: PaymentWorkflowConfig) => {
   const updateUI = async () => {
-    if (getActiveTabName() !== config.tabName) {
+    if (getActiveContext().tabName !== config.tabName) {
       toggleVisibility(config, false);
       return;
     }

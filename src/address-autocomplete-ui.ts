@@ -1,9 +1,10 @@
 import {} from './p21-context-monitor';
 import { attachSandboxLauncher, openSandbox } from './address-sandbox-launcher';
-import { ADDR1_REGEX, ADDR_NAME_REGEX } from './address-field-patterns';
-import { getActiveContext, getContainerSelector, getDataWindowSchema, getDataWindowSchemaCount, getP21Value, isAddressContextActive, isFieldEnabled } from './p21-data-endpoint';
+import { ADDR1_REGEX, ADDR_NAME_REGEX, getContainerSelector, isFieldEnabled } from './p21-data-endpoint';
+import { getActiveContext, getDataWindowSchema, getDataWindowSchemaCount, getP21Value } from './state-store';
+import { isAddressContextActive } from './endpoint-router';
 import { duplicateCheck } from './utils/duplicate-check';
-import type { P21DataContextUpdatedDetail } from './p21-context-monitor.js';
+import type { P21DataContextUpdatedDetail } from './types/p21-types';
 
 interface AddressAutocompleteWindow extends Window {
   __p21AddressHotkeyBound?: boolean;
@@ -15,6 +16,7 @@ const addressWindow = window as AddressAutocompleteWindow;
 
 let isInitializingUI = false;
 let discoveryTimeout: number | null = null;
+let lastTabName: string | undefined = undefined;
 
 const isDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebug') === 'true';
 
@@ -23,6 +25,14 @@ const isDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebug') === 't
  */
 export const discoverAndAttachAddressUI = (retryCount = 0): void => {
   if (discoveryTimeout) window.clearTimeout(discoveryTimeout);
+
+  const { tabName, p21TabId, dataWindow } = getActiveContext();
+  const currentIdentity = p21TabId || tabName || dataWindow; // More robust identity
+
+  // Optimization: Use P21 Tab ID or tab name as authoritative identity.
+  if (retryCount === 0 && currentIdentity && currentIdentity === lastTabName) {
+    return;
+  }
 
   discoveryTimeout = window.setTimeout(
     async () => {
@@ -33,6 +43,7 @@ export const discoverAndAttachAddressUI = (retryCount = 0): void => {
 
       try {
         isInitializingUI = true;
+        lastTabName = currentIdentity;
         attachDuplicateCheckListeners();
 
         const anchor = findAnchorInput();
@@ -157,12 +168,13 @@ const findAnchorInput = (): HTMLElement | null => {
     console.debug(LOG_PREFIX, 'findAnchorInput: No active XHR context. Falling back to DOM scan.');
   }
 
-  const allInputs = Array.from(document.querySelectorAll('input')).filter((input) => isFieldEnabled(input) && input.isConnected && input.getClientRects().length > 0);
-  const addr1Input = allInputs.find((input) => ADDR1_REGEX.test(input.id));
+  // Optimization: Filter by ID patterns first, then check if enabled to reduce state store queries
+  const allInputs = Array.from(document.querySelectorAll('input'));
+  const addr1Input = allInputs.find((input) => ADDR1_REGEX.test(input.id) && isFieldEnabled(input) && input.isConnected && input.getClientRects().length > 0);
 
   if (addr1Input) {
-    const nameInput = allInputs.find((input) => ADDR_NAME_REGEX.test(input.id));
-    const anchor = nameInput || addr1Input;
+    const nameInput = allInputs.find((input) => ADDR_NAME_REGEX.test(input.id) && isFieldEnabled(input) && input.isConnected && input.getClientRects().length > 0);
+    const anchor = (nameInput || addr1Input) as HTMLElement;
     if (isDebugEnabled()) console.debug(LOG_PREFIX, `findAnchorInput: DOM-based anchor input found (${nameInput ? 'Name' : 'Address1'} field):`, anchor, '(Source: DOM)');
     return anchor;
   }
@@ -177,14 +189,16 @@ export const installAddressAutocomplete = (): void => {
 
   bindAddressHotkey();
 
-  window.addEventListener('p21-ext:data-context-updated', (event) => {
-    const detail = (event as CustomEvent<P21DataContextUpdatedDetail>).detail;
-    if (!(detail.isAddressRelated || detail.isStructuralRescan || detail.isHistoryNavigation)) return;
+  window.addEventListener('p21-ext:transaction-reset', () => {
+    lastTabName = undefined;
+  });
 
-    if (detail.isStructuralRescan) {
-      window.setTimeout(() => discoverAndAttachAddressUI(), 300);
-    } else {
-      discoverAndAttachAddressUI();
+  window.addEventListener('p21-ext:data-context-updated', (event) => {
+    // Feature executes based on context update, decoupled from URL monitoring
+    const { isAddressRelated, isStructuralRescan } = (event as CustomEvent<P21DataContextUpdatedDetail>).detail;
+
+    if (isAddressRelated || isStructuralRescan) {
+      discoverAndAttachAddressUI(isStructuralRescan ? 1 : 0);
     }
   });
 

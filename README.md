@@ -63,13 +63,10 @@ A Chrome extension that integrates Google Places API with Prophet 21 windows for
 src/
 ├── action-monitor.ts             # P21 action/event monitor
 ├── address-autocomplete-ui.ts    # Address field discovery and UI hooks
-├── address-field-patterns.ts     # Address field matching patterns
 ├── address-sandbox.ts            # Sandboxed Google Places UI
 ├── address-sandbox-launcher.ts   # P21 page modal/iframe launcher
-├── automation-rules.ts           # Network automation rule definitions
 ├── background.ts          # Service worker background script
 ├── content.ts            # Content script for page injection
-├── follow-up-requests.ts # Internal P21 follow-up request transport
 ├── p21-context-monitor.ts # Data context tracking from XHR monitor events
 ├── p21-data-endpoint.ts  # P21 state, schemas, and field update actions
 ├── popup.ts              # Extension popup logic

@@ -2,16 +2,25 @@
   "manifest_version": 3,
   "name": "P21 Helper Dev",
   "short_name": "P21 Dev",
-  "version": "1.0.2.3",
+  "version": "1.0.2.4",
   "description": "Dev build of P21 Helper for testing Prophet 21 address lookup, Places autocomplete, and workflow automation.",
-  "permissions": ["scripting", "storage", "tabs"],
-  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "permissions": [
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://gatorps.prokeep.com;",
     "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' https://maps.googleapis.com; img-src 'self' *.googleapis.com https://maps.gstatic.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://maps.googleapis.com https://places.googleapis.com;"
   },
   "sandbox": {
-    "pages": ["sandbox.html"]
+    "pages": [
+      "sandbox.html"
+    ]
   },
   "background": {
     "service_worker": "background.js"
@@ -27,9 +36,15 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["*.js", "utils/*.js", "sandbox.html"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "*.js",
+        "utils/*.js",
+        "sandbox.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
-  "version_name": "1.0.2-dev-3"
+  "version_name": "1.0.2-dev-4"
 }

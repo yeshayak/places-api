@@ -1,5 +1,5 @@
-import { parseP21Payload, parseP21Request } from './utils/request-parser';
-import type { ParsedP21Payload } from './types/request-types';
+import { parseP21Payload, parseP21Request, isTrackableEndpoint } from './utils/request-parser';
+import type { ParsedP21Payload, P21XhrResponseEventDetail } from './types/request-types';
 
 interface XhrWatcherOptions {
   debug?: boolean;
@@ -17,15 +17,6 @@ interface XhrContext {
 
 interface WatcherWindow extends Window {
   __p21XhrWatcherInstalled?: boolean;
-}
-
-interface P21XhrResponseEventDetail {
-  requestId: number;
-  method: string;
-  url: string;
-  endpointKind: string;
-  requestValue?: unknown;
-  responseValue?: unknown;
 }
 
 const LOG_PREFIX = '[P21 EXT]';
@@ -93,21 +84,28 @@ export const installXhrWatcher = (options: XhrWatcherOptions = {}): void => {
       });
 
       this.addEventListener('loadend', () => {
-        const responseSummary = parseResponse(this);
         const latestRequest = parseP21Request({
           method: context.method,
           url: context.url,
           body: bodyToLoggableValue(context.requestBody),
         });
 
-        dispatchXhrResponseEvent({
-          requestId: context.requestId,
-          method: context.method,
-          url: latestRequest.normalizedUrl,
-          endpointKind: latestRequest.endpointKind,
-          requestValue: latestRequest.requestSummary.value,
-          responseValue: responseSummary.value,
-        });
+        const isActionable = isTrackableEndpoint(latestRequest.endpointKind) && context.method !== 'PUT' && context.method !== 'PATCH';
+
+        // Optimize by only parsing and emitting events for trackable business endpoints.
+        // Parsing is still performed if full debug is enabled for console visibility.
+        const responseSummary = isActionable || context.shouldLog ? parseResponse(this) : { isJson: false };
+
+        if (isActionable) {
+          dispatchXhrResponseEvent({
+            requestId: context.requestId,
+            method: context.method,
+            url: latestRequest.normalizedUrl,
+            endpointKind: latestRequest.endpointKind,
+            requestValue: latestRequest.requestSummary.value,
+            responseValue: responseSummary.value,
+          });
+        }
 
         logIfEnabled(context.shouldLog === true, {
           type: 'xhr-response',
@@ -189,7 +187,7 @@ const collectParseErrors = (payload: ParsedP21Payload): string[] => (payload.err
 const isFullDebugEnabled = (): boolean => localStorage.getItem(DEBUG_FULL_KEY) === 'true';
 
 const shouldLogRequest = (options: XhrWatcherOptions, endpointKind: string): boolean => {
-  return isFullDebugEnabled() && (endpointKind !== 'unknown' || options.debug === true);
+  return isFullDebugEnabled() && endpointKind !== 'static' && (endpointKind !== 'unknown' || options.debug === true);
 };
 
 const logIfEnabled = (shouldLog: boolean, event: Record<string, unknown>): void => {

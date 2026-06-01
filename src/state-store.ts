@@ -54,6 +54,7 @@ const rebucketData = (): void => {
           if (isDebugEnabled()) console.debug(LOG_PREFIX, `Re-bucketed schema: ${fullKey} -> ${newTabId}`);
         }
       }
+      if (dwMap.size === 0) unknownSchemas.delete(tabName);
     }
   }
 
@@ -72,6 +73,7 @@ const rebucketData = (): void => {
           if (isDebugEnabled()) console.debug(LOG_PREFIX, `Re-bucketed data: ${fullKey} -> ${newTabId}`);
         }
       }
+      if (dwMap.size === 0) unknownData.delete(tabName);
     }
   }
 
@@ -90,6 +92,7 @@ const rebucketData = (): void => {
           if (isDebugEnabled()) console.debug(LOG_PREFIX, `Structure: Re-bucketed metadata: ${fullKey} -> ${newTabId}`);
         }
       }
+      if (dwMap.size === 0) unknownProps.delete(tabName);
     }
   }
 };
@@ -157,10 +160,26 @@ export const trackActiveContext = (response: P21DesignResponse | any, _url: stri
   Object.entries(dataSource as Record<string, unknown>).forEach(([dwKey, value]) => {
     if (!value || typeof value !== 'object') return;
 
-    const p21TabId = getTabIdForDw(dwKey);
-    const parts = dwKey.split('.');
-    const tabName = parts.length > 1 ? parts[0] : 'ROOT';
-    const dwName = parts.length > 1 ? parts[1] : parts[0];
+    let parts = dwKey.split('.');
+    let tabName = parts.length > 1 ? parts[0] : 'ROOT';
+    let dwName = parts.length > 1 ? parts[1] : parts[0];
+
+    // If the data arrives with a simple DW name (e.g., from /data/data),
+    // attempt to resolve its full tab-prefixed identity from existing schema definitions.
+    if (tabName === 'ROOT') {
+      for (const container of state.dataWindowSchemas.values()) {
+        for (const [tName, dws] of container.entries()) {
+          if (dws.has(dwName)) {
+            tabName = tName;
+            break;
+          }
+        }
+        if (tabName !== 'ROOT') break;
+      }
+    }
+
+    const resolvedPath = tabName === 'ROOT' ? dwName : `${tabName}.${dwName}`;
+    const p21TabId = getTabIdForDw(resolvedPath);
 
     // Ensure bucket exists in nested maps
     if (!state.dataWindowSchemas.has(p21TabId)) state.dataWindowSchemas.set(p21TabId, new Map());
@@ -175,11 +194,17 @@ export const trackActiveContext = (response: P21DesignResponse | any, _url: stri
     const tabSchemas = bucketSchemas.get(tabName) as Map<string, Set<string>>;
     const tabData = bucketData.get(tabName) as Map<string, Record<string, unknown>[]>;
 
+    // 2a. Update/Merge Schemas
+    // P21 often returns partial data updates. We append new fields to the existing schema
+    // rather than overwriting it, ensuring address discovery doesn't lose field context.
     const sample = Array.isArray(value) ? value[0] : value;
     if (sample) {
-      tabSchemas.set(dwName, new Set(Object.keys(sample)));
+      const existingSchema = tabSchemas.get(dwName) || new Set<string>();
+      Object.keys(sample).forEach((key) => existingSchema.add(key));
+      tabSchemas.set(dwName, existingSchema);
     }
 
+    // 2b. Merge Data Rows
     if (Array.isArray(value)) {
       const existingRows = (tabData.get(dwName) || []) as Record<string, unknown>[];
       const mergedRows = [...existingRows];
@@ -202,16 +227,20 @@ export const trackActiveContext = (response: P21DesignResponse | any, _url: stri
     }
   });
 
-  // 3. Track Active Tab/DW
-  if (Result?.TabDefinition?.UniqueName) {
-    state.activeContext.tabName = Result.TabDefinition.UniqueName;
-  }
+  // 3. Track Active Tab/DW (Context Identity)
+  // Update the global active context identity only when the response contains structural result data.
+  // Pure data updates (/data/data) should refresh 'allDataWindows' without shifting the global active view.
+  if (Result) {
+    if (Result.TabDefinition?.UniqueName) {
+      state.activeContext.tabName = Result.TabDefinition.UniqueName;
+    }
 
-  const relevantKey = Object.keys(dataSource).find((key) => key.includes('.'));
-  if (relevantKey) {
-    const [tn, dw] = relevantKey.split('.');
-    state.activeContext.tabName = tn;
-    state.activeContext.dataWindow = dw;
+    const relevantKey = Object.keys(dataSource).find((key) => key.includes('.'));
+    if (relevantKey) {
+      const [tn, dw] = relevantKey.split('.');
+      state.activeContext.tabName = tn;
+      state.activeContext.dataWindow = dw;
+    }
   }
 
   deriveP21TabId();
@@ -225,6 +254,10 @@ export const trackActiveContext = (response: P21DesignResponse | any, _url: stri
     Object.entries(Result.Properties).forEach(([path, props]) => {
       processDataWindowProperties(props as P21DataWindowProperties, path);
     });
+  }
+
+  if (isDebugEnabled() && localStorage.getItem('p21ExtDebugFull') === 'true') {
+    console.debug(LOG_PREFIX, 'State updated. Current snapshot:', getLoggableState());
   }
 };
 
@@ -298,27 +331,26 @@ const updateMetadata = (propEntry: P21FieldProperty, type: 'visible' | 'enabled'
   }
 };
 
+const getLoggableState = () => {
+  return {
+    ...state,
+    dataWindowSchemas: Object.fromEntries(
+      Array.from(state.dataWindowSchemas.entries()).map(([container, tabs]) => [
+        container,
+        Object.fromEntries(Array.from(tabs.entries()).map(([tab, dws]) => [tab, Object.fromEntries(Array.from(dws.entries()).map(([dw, fields]) => [dw, Array.from(fields)]))])),
+      ]),
+    ),
+    allDataWindows: Object.fromEntries(Array.from(state.allDataWindows.entries()).map(([container, tabs]) => [container, Object.fromEntries(Array.from(tabs.entries()).map(([tab, dws]) => [tab, Object.fromEntries(dws)]))])),
+    windowFieldProperties: Object.fromEntries(
+      Array.from(state.windowFieldProperties.entries()).map(([container, tabs]) => [
+        container,
+        Object.fromEntries(Array.from(tabs.entries()).map(([tab, dws]) => [tab, Object.fromEntries(Array.from(dws.entries()).map(([dw, fields]) => [dw, Object.fromEntries(fields)]))])),
+      ]),
+    ),
+  };
+};
+
 export const getActiveContext = () => {
-  if (isDebugEnabled()) {
-    // Convert Maps and Sets to Objects/Arrays so they serialize in the console
-    const loggableState = {
-      ...state,
-      dataWindowSchemas: Object.fromEntries(
-        Array.from(state.dataWindowSchemas.entries()).map(([container, tabs]) => [
-          container,
-          Object.fromEntries(Array.from(tabs.entries()).map(([tab, dws]) => [tab, Object.fromEntries(Array.from(dws.entries()).map(([dw, fields]) => [dw, Array.from(fields)]))])),
-        ]),
-      ),
-      allDataWindows: Object.fromEntries(Array.from(state.allDataWindows.entries()).map(([container, tabs]) => [container, Object.fromEntries(Array.from(tabs.entries()).map(([tab, dws]) => [tab, Object.fromEntries(dws)]))])),
-      windowFieldProperties: Object.fromEntries(
-        Array.from(state.windowFieldProperties.entries()).map(([container, tabs]) => [
-          container,
-          Object.fromEntries(Array.from(tabs.entries()).map(([tab, dws]) => [tab, Object.fromEntries(Array.from(dws.entries()).map(([dw, fields]) => [dw, Object.fromEntries(fields)]))])),
-        ]),
-      ),
-    };
-    console.debug(LOG_PREFIX, 'Query: Retrieving complete state:', loggableState);
-  }
   return { ...state.activeContext };
 };
 
@@ -426,13 +458,13 @@ window.addEventListener('p21-ext:transaction-reset', (event: any) => {
   const { identity } = event.detail;
   state.activeContext = {
     windowName: state.activeContext.windowName,
+    p21TabId: state.activeContext.p21TabId, // Preserve the container mapping
   };
   state.allDataWindows.clear();
   state.windowFieldProperties.clear();
-  state.dataWindowSchemas.clear();
 
   if (isDebugEnabled()) {
-    console.info(LOG_PREFIX, `Transaction Reset: Wiping transient state for identity "${identity}"`);
+    console.info(LOG_PREFIX, `Transaction Reset: Wiping transient data/properties for identity "${identity}". Structural schemas preserved.`);
   }
 });
 

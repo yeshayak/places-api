@@ -26,6 +26,7 @@ let listenersAttached = false;
  * Orchestrates the payment link UI and logic.
  */
 export const initPaymentWorkflow = (config: PaymentWorkflowConfig) => {
+  console.debug(`${LOG_PREFIX} Initializing with config:`, config);
   const updateUI = async () => {
     if (getActiveContext().tabName !== config.tabName) {
       toggleVisibility(config, false);
@@ -41,7 +42,15 @@ export const initPaymentWorkflow = (config: PaymentWorkflowConfig) => {
       email: document.querySelector(config.selectors.emailBtn) as HTMLElement,
     };
 
-    if (!el.customer || !el.link || !el.copy || !el.email) return;
+    if (!el.customer || !el.link || !el.copy || !el.email) {
+      console.error(`${LOG_PREFIX} Missing mandatory UI elements:`, {
+        customerId: !!el.customer,
+        linkTextArea: !!el.link,
+        copyBtn: !!el.copy,
+        emailBtn: !!el.email,
+      });
+      return;
+    }
 
     const scope = await getP21Scope(el.customer);
     const record = scope?.record;

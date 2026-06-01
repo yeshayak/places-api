@@ -2,7 +2,7 @@
  * Types related to P21 request and payload parsing.
  */
 
-export type P21EndpointKind = 'data' | 'design' | 'grid' | 'grid-state' | 'history' | 'clear' | 'save' | 'transaction' | 'multiprefs' | 'ui-full' | 'unknown';
+export type P21EndpointKind = 'data' | 'design' | 'grid' | 'grid-state' | 'history' | 'clear' | 'save' | 'transaction' | 'multiprefs' | 'ui-full' | 'static' | 'unknown';
 
 export interface ParsedP21Request {
   normalizedUrl: string;
@@ -36,4 +36,13 @@ export interface P21PayloadSummary {
     PreferenceName: string;
     PreferenceValue: string;
   }>;
+}
+
+export interface P21XhrResponseEventDetail {
+  requestId: number;
+  method: string;
+  url: string;
+  endpointKind: P21EndpointKind;
+  requestValue?: unknown;
+  responseValue?: unknown;
 }

@@ -10,6 +10,7 @@ const LOG_PREFIX = '[P21 SANDBOX]';
 window.addEventListener('message', async (event) => {
   if (event.data?.type === 'INIT_SANDBOX' && event.data.apiKey) {
     await initAutocomplete(event.data.apiKey, event.data.initialValue);
+    console.log('[P21 SANDBOX] Google Places Autocomplete initialized.', event);
   }
 });
 
@@ -36,23 +37,25 @@ async function initAutocomplete(apiKey: string, initialValue?: string): Promise<
     container?.appendChild(autocompleteElement);
   }
 
-  // If an initial value was provided, inject it into the internal input of the web component
-  if (initialValue) {
-    let attempts = 0;
-    const injectValue = () => {
-      const internalInput = (autocompleteElement as any).shadowRoot?.querySelector('input');
-      if (internalInput) {
+  // Focus the internal search input and optionally inject an initial value
+  let attempts = 0;
+  const setupInput = () => {
+    const internalInput = (autocompleteElement as any).shadowRoot?.querySelector('input');
+    if (internalInput) {
+      if (initialValue) {
         internalInput.value = initialValue;
         // Trigger input event so the Google component acknowledges the value change
         internalInput.dispatchEvent(new Event('input', { bubbles: true }));
-      } else if (attempts < 10) {
-        attempts++;
-        setTimeout(injectValue, 100);
       }
-    };
+      // Programmatically focus the input for better UX in the sandboxed modal
+      internalInput.focus();
+    } else if (attempts < 20) {
+      attempts++;
+      setTimeout(setupInput, 50);
+    }
+  };
 
-    setTimeout(injectValue, 200);
-  }
+  setupInput();
 
   console.debug(LOG_PREFIX, 'Places UI: Autocomplete element attached to DOM.');
 

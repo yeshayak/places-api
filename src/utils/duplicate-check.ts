@@ -29,14 +29,22 @@ export const duplicateCheck = async (lookupName: string, customerId?: string): P
   // Escape single quotes for OData compatibility
   const escapedLookup = lookupName.replace(/'/g, "''").toLowerCase();
 
+  // Normalize the base URL to prevent double slashes
+  const baseUrl = p21SoaUrl.endsWith('/') ? p21SoaUrl.slice(0, -1) : p21SoaUrl;
+
   try {
-    // 1. Use tolower() for case-insensitive matching
-    // 2. Wrap customerId in quotes in case it is stored as a string in the OData view
-    const url = `${p21SoaUrl}/odataservice/odata/view/ice_ship_to_address?$filter=delete_flag eq 'N' and (customer_id eq '${cleanCustomerId}' or customer_id eq ${cleanCustomerId}) and contains(tolower(phys_address1), '${escapedLookup}')&$count=true`;
+    // Use tolower() for case-insensitive matching on the address string component
+    const url = `${baseUrl}/odataservice/odata/view/ice_ship_to_address?$filter=delete_flag eq 'N' and customer_id eq ${cleanCustomerId} and contains(phys_address1, '${escapedLookup}')&$count=true`;
 
     if (localStorage.getItem('p21ExtDebug') === 'true') console.log('[P21 EXT] Duplicate Check URL:', url);
 
     const response = await fetch(url, { method: 'GET', headers });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OData server returned ${response.status}: ${errorText}`);
+    }
+
     const result: ODataResponse = await response.json();
 
     if (result['@odata.count'] > 0) {

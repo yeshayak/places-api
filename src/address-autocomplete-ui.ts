@@ -1,4 +1,4 @@
-import {} from './p21-context-monitor';
+import {} from './context-manager';
 import { attachSandboxLauncher, openSandbox } from './address-sandbox-launcher';
 import { ADDR1_REGEX, ADDR_NAME_REGEX, getContainerSelector, isFieldEnabled } from './p21-data-endpoint';
 import { getActiveContext, getDataWindowSchema, getDataWindowSchemaCount, getP21Value } from './state-store';
@@ -21,10 +21,46 @@ let lastTabName: string | undefined = undefined;
 const isDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebug') === 'true';
 
 /**
+ * Attaches listeners to Address1 fields to trigger duplicate checks on manual entry.
+ */
+const attachDuplicateCheckListeners = (): void => {
+  const allInputs = Array.from(document.querySelectorAll('input'));
+  allInputs.forEach((input) => {
+    // Attach to Address1 fields that are enabled and haven't been tagged yet
+    if (ADDR1_REGEX.test(input.id || '') && isFieldEnabled(input) && !input.dataset.duplicateCheckAttached) {
+      if (isDebugEnabled()) console.debug(LOG_PREFIX, `Attaching duplicate check listener to: ${input.id}`);
+
+      const handleUpdate = () => {
+        const value = input.value.trim();
+        // Prevent redundant checks for the same value (e.g., both blur and change firing)
+        if (!value || value === input.dataset.lastCheckedValue) return;
+
+        if (isAddressContextActive() || getDataWindowSchemaCount() === 0) {
+          const customerId = getP21Value('customer_id');
+          if (isDebugEnabled()) console.debug(LOG_PREFIX, `Triggering duplicate check for manual change: ${value} (Customer: ${customerId})`);
+
+          input.dataset.lastCheckedValue = value;
+          duplicateCheck(value, customerId);
+        }
+      };
+
+      // Listen for both blur (tab out) and change (programmatic or manual enter)
+      input.addEventListener('blur', handleUpdate);
+      input.addEventListener('change', handleUpdate);
+
+      input.dataset.duplicateCheckAttached = 'true';
+    }
+  });
+};
+
+/**
  * Global discovery: finds address-related inputs and attaches search launchers.
  */
 export const discoverAndAttachAddressUI = (retryCount = 0): void => {
   if (discoveryTimeout) window.clearTimeout(discoveryTimeout);
+
+  // Always attempt to attach duplicate check listeners, bypassing the identity cache
+  attachDuplicateCheckListeners();
 
   const { tabName, p21TabId, dataWindow } = getActiveContext();
   const currentIdentity = p21TabId || tabName || dataWindow; // More robust identity
@@ -43,22 +79,28 @@ export const discoverAndAttachAddressUI = (retryCount = 0): void => {
 
       try {
         isInitializingUI = true;
+
+        if (isDebugEnabled() && currentIdentity !== lastTabName) {
+          console.log(`${LOG_PREFIX} UI Context identity initiated: "${currentIdentity}"`);
+        }
+
         lastTabName = currentIdentity;
         attachDuplicateCheckListeners();
 
-        const anchor = findAnchorInput();
         const context = getActiveContext();
+        const anchor = findAnchorInput(context);
         const schemaCount = getDataWindowSchemaCount();
 
-        if (anchor && (isAddressContextActive() || schemaCount === 0)) {
+        if (anchor && (isAddressContextActive() || (schemaCount === 0 && context.windowName))) {
           if ((anchor as HTMLElement).dataset.sandboxAttached) return;
 
           const container = getContainerSelector(anchor);
+          const containerElement = (container ? document.querySelector(container) : null) || document;
 
           if (ADDR_NAME_REGEX.test(anchor.id)) {
             const nameInput = anchor as HTMLInputElement;
-            // Look for the corresponding Address1 field to ensure we are in a valid address block
-            const addr1 = Array.from(document.querySelectorAll('input')).find((i) => ADDR1_REGEX.test(i.id) && isFieldEnabled(i) && i.isConnected && i.getClientRects().length > 0);
+            // Look for the corresponding Address1 field within the same container to ensure a valid, visible address block
+            const addr1 = Array.from(containerElement.querySelectorAll('input')).find((i) => ADDR1_REGEX.test(i.id) && isFieldEnabled(i) && i.isConnected && i.getClientRects().length > 0);
 
             if (addr1) {
               attachSandboxLauncher(nameInput, container, true);
@@ -97,28 +139,20 @@ const bindAddressHotkey = (): void => {
   addressWindow.__p21AddressHotkeyBound = true;
 };
 
-const attachDuplicateCheckListeners = (): void => {
-  const allInputs = Array.from(document.querySelectorAll('input'));
-  allInputs.forEach((input) => {
-    if (ADDR1_REGEX.test(input.id) && !input.dataset.duplicateCheckAttached) {
-      if (isDebugEnabled()) console.debug(LOG_PREFIX, `Attaching duplicate check listener to: ${input.id}`);
-      input.addEventListener('blur', () => {
-        const value = input.value.trim();
-        if (isDebugEnabled()) console.debug(LOG_PREFIX, `Blur detected on address1. Value: "${value}". Context Active: ${isAddressContextActive()}, Schemas: ${getDataWindowSchemaCount()}`);
+/**
+ * Resolves a P21 element by its precise ID or by searching within its DataWindow container.
+ */
+const findP21Element = (dwName: string, fieldName: string): HTMLElement | null => {
+  const preciseId = `${dwName}.${fieldName}`;
+  const element = document.getElementById(preciseId);
+  if (element) return element;
 
-        if (value && (isAddressContextActive() || getDataWindowSchemaCount() === 0)) {
-          const customerId = getP21Value('customer_id');
-          if (isDebugEnabled()) console.debug(LOG_PREFIX, `Triggering duplicate check for: ${value} (Customer: ${customerId})`);
-          duplicateCheck(value, customerId as string);
-        }
-      });
-      input.dataset.duplicateCheckAttached = 'true';
-    }
-  });
+  const dwContainer = document.querySelector(`[id="${dwName}"]`);
+  return (dwContainer?.querySelector(`input[id$=".${fieldName}"]`) as HTMLElement) || null;
 };
 
-const findAnchorInput = (): HTMLElement | null => {
-  const { tabName, dataWindow } = getActiveContext();
+const findAnchorInput = (contextOverride?: ReturnType<typeof getActiveContext>): HTMLElement | null => {
+  const { tabName, dataWindow } = contextOverride || getActiveContext();
   const schemaCount = getDataWindowSchemaCount();
 
   if (isDebugEnabled() && (tabName || schemaCount === 0)) {
@@ -129,30 +163,30 @@ const findAnchorInput = (): HTMLElement | null => {
     if (isDebugEnabled()) console.debug(LOG_PREFIX, `findAnchorInput: XHR context active: tabName=${tabName}, dataWindow=${dataWindow}`);
     const fullDwName = `${tabName}.${dataWindow}`;
     const schema = getDataWindowSchema(fullDwName);
+
     if (schema) {
       const schemaFields = Array.from(schema);
       if (isDebugEnabled()) console.debug(LOG_PREFIX, `findAnchorInput: Schema found for ${fullDwName}. Fields:`, schemaFields);
 
-      // Requirement: Only attach to Name if Address1 exists in schema
-      const hasAddress1InSchema = schemaFields.some((field) => ADDR1_REGEX.test(field));
+      // Requirement: Only attach if a valid Address1 field exists in the schema AND is visible in the DOM.
+      // This prevents false positives in contexts like Contacts where address fields might be defined but not rendered.
+      const hasVisibleAddress1 = schemaFields
+        .filter((field) => ADDR1_REGEX.test(field))
+        .some((field) => {
+          const element = findP21Element(dataWindow, field);
+          return element instanceof HTMLElement && isFieldEnabled(element) && element.isConnected && element.getClientRects().length > 0;
+        });
+
       let anchorFieldName: string | undefined;
 
-      if (hasAddress1InSchema) {
+      if (hasVisibleAddress1) {
         anchorFieldName = schemaFields.find((field) => ADDR_NAME_REGEX.test(field)) || schemaFields.find((field) => ADDR1_REGEX.test(field));
       }
 
       if (anchorFieldName) {
         if (isDebugEnabled()) console.debug(LOG_PREFIX, `findAnchorInput: Anchor field name identified from schema: ${anchorFieldName}`);
-        // P21 uses short datawindow name in DOM IDs (e.g., 'shipto.fieldname', not 'TP_SHIPTO.shipto.fieldname')
-        const preciseId = `${dataWindow}.${anchorFieldName}`;
-        let element = document.getElementById(preciseId);
-        if (isDebugEnabled()) console.debug(LOG_PREFIX, `findAnchorInput: Attempting to find element by precise ID: ${preciseId}. Found:`, !!element);
-        if (!element) {
-          const dwContainer = document.querySelector(`[id="${dataWindow}"]`);
-          if (isDebugEnabled()) console.debug(LOG_PREFIX, `findAnchorInput: Direct ID not found. Searching within container [id="${dataWindow}"]. Found container:`, !!dwContainer);
-          element = dwContainer?.querySelector(`input[id$=".${anchorFieldName}"]`) as HTMLElement;
-          if (isDebugEnabled()) console.debug(LOG_PREFIX, 'findAnchorInput: Found element within container:', !!element);
-        }
+
+        const element = findP21Element(dataWindow, anchorFieldName);
 
         if (element instanceof HTMLInputElement && isFieldEnabled(element) && element.isConnected && element.getClientRects().length > 0) {
           if (isDebugEnabled()) console.debug(LOG_PREFIX, 'findAnchorInput: XHR-prioritized anchor input found and enabled:', element, '(Source: XHR)');
@@ -161,6 +195,11 @@ const findAnchorInput = (): HTMLElement | null => {
       } else if (isDebugEnabled()) {
         console.debug(LOG_PREFIX, `findAnchorInput: No anchor field name found in schema for ${fullDwName} using address regexes.`);
       }
+
+      // Optimization: If a schema is found for the active XHR context, it is the authoritative
+      // map for the current view. If address fields aren't in the schema, we stop here
+      // to prevent the DOM scan from picking up fields from inactive or background tabs.
+      return null;
     } else if (isDebugEnabled()) {
       console.debug(LOG_PREFIX, `findAnchorInput: No schema found for ${fullDwName}.`);
     }
@@ -208,4 +247,7 @@ export const installAddressAutocomplete = (): void => {
       discoverAndAttachAddressUI();
     }
   });
+
+  // Initial scan to catch fields already present when the script loads
+  discoverAndAttachAddressUI();
 };

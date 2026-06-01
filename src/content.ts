@@ -63,7 +63,7 @@
   });
 
   const ROUTER_CONFIG = {
-    core: ['xhr-monitor.js', 'action-monitor.js', 'state-store.js', 'endpoint-router.js'],
+    core: ['network-monitor.js', 'action-monitor.js', 'state-store.js', 'endpoint-router.js'],
   };
 
   /**

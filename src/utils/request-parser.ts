@@ -8,13 +8,14 @@ interface ParseP21RequestInput {
 
 export const parseP21Request = (input: ParseP21RequestInput): ParsedP21Request => {
   const parsedUrl = parseUrl(input.url);
-  const requestSummary = parseP21Payload(input.body);
+  const endpointKind = classifyEndpoint(parsedUrl.path);
+  const requestSummary = endpointKind === 'static' ? { isJson: false } : parseP21Payload(input.body);
 
   return {
     normalizedUrl: parsedUrl.normalizedUrl,
     path: parsedUrl.path,
     query: parsedUrl.query,
-    endpointKind: classifyEndpoint(parsedUrl.path),
+    endpointKind,
     requestSummary,
   };
 };
@@ -53,6 +54,11 @@ export const parseP21Payload = (raw: string | unknown): ParsedP21Payload => {
 };
 
 const classifyEndpoint = (path: string): P21EndpointKind => {
+  // Detect static assets to prevent unnecessary monitoring overhead
+  if (/\.(js|css|html|svg|png|jpg|jpeg|gif|woff|woff2|ttf|eot|ico|json)$/i.test(path)) {
+    return 'static';
+  }
+
   if (path.endsWith('/ui/full/v2/data/data') || path.endsWith('/ui/full/v1/data/data')) {
     return 'data';
   }
@@ -73,9 +79,6 @@ const classifyEndpoint = (path: string): P21EndpointKind => {
   }
   if (path.includes('/ui/full/v1/grid')) {
     return 'grid';
-  }
-  if (/\/ui\/full\/v\d+\/grid\/.+\/elements\/state$/i.test(path)) {
-    return 'grid-state';
   }
   if (path.includes('/api/v2/transaction') || path.includes('/transaction')) {
     return 'transaction';
@@ -165,4 +168,11 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   if (!isRecord(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+};
+
+/**
+ * Identifies endpoints that carry P21 business data, schema definitions, or state resets.
+ */
+export const isTrackableEndpoint = (kind: P21EndpointKind): boolean => {
+  return ['data', 'design', 'grid', 'history', 'clear', 'save', 'transaction', 'multiprefs'].includes(kind);
 };

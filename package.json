@@ -1,6 +1,6 @@
 {
   "name": "places-api",
-  "version": "1.0.2-dev-4",
+  "version": "1.0.2-dev-5",
   "description": "Chrome extension for Places API integration",
   "engines": {
     "node": ">=22"

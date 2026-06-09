@@ -1,11 +1,15 @@
 import { getUserSession } from './utils/user-session';
 
 const LOG_PREFIX = '[P21 EXT] [CostSync]';
+let isWorkflowInitialized = false;
 
 /**
  * Workflow to sync unit price changes to supplier cost in Purchase Order Entry.
  */
 export const initSupplierCostWorkflow = () => {
+  if (isWorkflowInitialized) return;
+  isWorkflowInitialized = true;
+
   const observer = new MutationObserver(() => {
     const elements = document.querySelectorAll<HTMLElement>("[data-key*='tp_17_dw_17.unit_price_display']");
     elements.forEach((element) => {

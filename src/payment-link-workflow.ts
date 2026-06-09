@@ -20,13 +20,17 @@ export interface PaymentWorkflowConfig {
 }
 
 let lastPaymentLink = '';
-let listenersAttached = false;
+const initializedTabs = new Set<string>();
+let isWorkflowInitialized = false;
 
 /**
  * Orchestrates the payment link UI and logic.
  */
 export const initPaymentWorkflow = (config: PaymentWorkflowConfig) => {
-  console.debug(`${LOG_PREFIX} Initializing with config:`, config);
+  if (initializedTabs.has(config.tabName)) return;
+  initializedTabs.add(config.tabName);
+
+  console.debug(`${LOG_PREFIX} Initializing for tab: ${config.tabName}`);
   const updateUI = async () => {
     if (getActiveContext().tabName !== config.tabName) {
       toggleVisibility(config, false);
@@ -83,12 +87,18 @@ export const initPaymentWorkflow = (config: PaymentWorkflowConfig) => {
   };
 
   // Register event triggers
-  window.addEventListener('p21-ext:action-monitor-event', (event: any) => {
-    const { name } = event.detail;
-    if (name?.includes('selectionchanged') || name === 'click') {
-      setTimeout(updateUI, 1000);
-    }
-  });
+  if (!isWorkflowInitialized) {
+    window.addEventListener('p21-ext:action-monitor-event', (event: any) => {
+      // Ensure action detail and name are not empty
+      if (!event.detail || !event.detail.name) return;
+
+      const { name } = event.detail;
+      if (name?.includes('selectionchanged') || name === 'click') {
+        setTimeout(updateUI, 1000);
+      }
+    });
+    isWorkflowInitialized = true;
+  }
 
   updateUI();
 };
@@ -101,7 +111,9 @@ const toggleVisibility = (config: PaymentWorkflowConfig, show: boolean) => {
 };
 
 const attachListeners = (config: PaymentWorkflowConfig, link: HTMLTextAreaElement, emailBtn: HTMLElement, copyBtn: HTMLElement, record: any) => {
-  if (listenersAttached) return;
+  // Use dataset to track attachment on specific DOM elements rather than a global boolean.
+  // This ensures that if P21 recreates the buttons, we attach listeners to the new ones.
+  if (emailBtn.dataset.listenersAttached) return;
 
   emailBtn.addEventListener('click', () => {
     let email = record.email_address || '';
@@ -123,6 +135,6 @@ const attachListeners = (config: PaymentWorkflowConfig, link: HTMLTextAreaElemen
     });
   }
 
-  listenersAttached = true;
+  emailBtn.dataset.listenersAttached = 'true';
   console.debug(`${LOG_PREFIX} Listeners active.`);
 };

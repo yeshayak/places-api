@@ -26,11 +26,12 @@ export const loadGoogleMaps = (apiKey: string): Promise<void> => {
   }
 
   loadPromise = new Promise((resolve, reject) => {
+    // Note: We no longer include 'libraries: places' here because
+    // we use google.maps.importLibrary('places') in the sandbox.
     const script = document.createElement('script');
     const params = new URLSearchParams({
       key: apiKey,
-      libraries: 'places',
-      v: 'weekly',
+      v: 'beta',
       loading: 'async',
       callback: 'initMap',
     });

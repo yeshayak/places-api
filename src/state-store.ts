@@ -1,4 +1,4 @@
-import type { P21DesignResponse, P21ActiveContext, P21DataWindowProperties, P21FieldProperty } from './types/p21-types';
+import type { P21ActiveContext } from './types/p21-types';
 
 const LOG_PREFIX = '[P21 STATE]';
 
@@ -7,8 +7,17 @@ interface FieldMetadata {
   enabled: boolean;
 }
 
-const state = {
-  activeContext: {} as P21ActiveContext,
+interface P21State {
+  activeContext: P21ActiveContext;
+  dataWindowSchemas: Map<string, Map<string, Map<string, Set<string>>>>;
+  allDataWindows: Map<string, Map<string, Map<string, Record<string, unknown>[]>>>;
+  windowFieldProperties: Map<string, Map<string, Map<string, Map<string, FieldMetadata>>>>;
+}
+
+const state: P21State = {
+  activeContext: {
+    sectionActiveTabs: {},
+  } as P21ActiveContext,
   // Nested: Container (tab_1) -> TabPage (TABPAGE_1) -> DataWindow (shiptomain) -> Set<fields>
   dataWindowSchemas: new Map<string, Map<string, Map<string, Set<string>>>>(),
   // Nested: Container (tab_1) -> TabPage (TABPAGE_1) -> DataWindow (shiptomain) -> rows[]
@@ -17,321 +26,63 @@ const state = {
   windowFieldProperties: new Map<string, Map<string, Map<string, Map<string, FieldMetadata>>>>(),
 };
 
+type StateChangeSubscriber = (state: P21State) => void;
+const subscribers = new Set<StateChangeSubscriber>();
+
 const isDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebug') === 'true' || localStorage.getItem('p21ExtDebugFull') === 'true';
 
-/**
- * Determines which P21 layout container (tab_1, tab_2) a DataWindow belongs to.
- */
-const getTabIdForDw = (dwKey: string): string => {
-  if (!dwKey.includes('.')) return 'global';
-  const tabName = dwKey.split('.')[0].toUpperCase();
+const notifySubscribers = () => {
+  subscribers.forEach((sub) => sub({ ...state }));
+  window.dispatchEvent(new CustomEvent('p21-ext:state-updated', { detail: { state: getLoggableState() } }));
+};
 
-  for (const [containerId, tabMap] of state.dataWindowSchemas.entries()) {
-    if (containerId === 'unknown' || containerId === 'global') continue;
-    if (tabMap.has(tabName)) return containerId;
-  }
+export const subscribe = (callback: StateChangeSubscriber) => {
+  subscribers.add(callback);
+  return () => subscribers.delete(callback);
+};
 
-  // Fallback to active context if mapping is unknown
-  return state.activeContext.p21TabId || 'unknown';
+export const updateActiveContext = (context: Partial<P21ActiveContext>) => {
+  state.activeContext = { ...state.activeContext, ...context };
+  notifySubscribers();
+};
+
+export const updateSchemas = (containerId: string, tabName: string, dwName: string, fields: Set<string>) => {
+  if (!state.dataWindowSchemas.has(containerId)) state.dataWindowSchemas.set(containerId, new Map());
+  const container = state.dataWindowSchemas.get(containerId)!;
+  if (!container.has(tabName)) container.set(tabName, new Map());
+  const tab = container.get(tabName)!;
+  const existing = tab.get(dwName) || new Set<string>();
+  fields.forEach((f) => existing.add(f));
+  tab.set(dwName, existing);
+  notifySubscribers();
+};
+
+export const updateDataRows = (containerId: string, tabName: string, dwName: string, rows: Record<string, unknown>[]) => {
+  if (!state.allDataWindows.has(containerId)) state.allDataWindows.set(containerId, new Map());
+  const container = state.allDataWindows.get(containerId)!;
+  if (!container.has(tabName)) container.set(tabName, new Map());
+  container.get(tabName)!.set(dwName, rows);
+  notifySubscribers();
+};
+
+export const updateFieldProperties = (containerId: string, tabName: string, dwName: string, fieldName: string, meta: FieldMetadata) => {
+  if (!state.windowFieldProperties.has(containerId)) state.windowFieldProperties.set(containerId, new Map());
+  const container = state.windowFieldProperties.get(containerId)!;
+  if (!container.has(tabName)) container.set(tabName, new Map());
+  const tab = container.get(tabName)!;
+  if (!tab.has(dwName)) tab.set(dwName, new Map());
+  tab.get(dwName)!.set(fieldName, meta);
+  notifySubscribers();
 };
 
 /**
- * Moves data from the 'unknown' bucket to correct containers once mappings are established.
+ * Interpretation logic formerly in trackActiveContext has moved to Context Manager.
  */
-const rebucketData = (): void => {
-  const unknownSchemas = state.dataWindowSchemas.get('unknown');
-  if (unknownSchemas) {
-    for (const [tabName, dwMap] of unknownSchemas.entries()) {
-      for (const [dwName, schema] of dwMap.entries()) {
-        const fullKey = tabName === 'ROOT' ? dwName : `${tabName}.${dwName}`;
-        const newTabId = getTabIdForDw(fullKey);
-        if (newTabId !== 'unknown') {
-          if (!state.dataWindowSchemas.has(newTabId)) state.dataWindowSchemas.set(newTabId, new Map());
-          const bucket = state.dataWindowSchemas.get(newTabId)!;
-          if (!bucket.has(tabName)) bucket.set(tabName, new Map());
-          bucket.get(tabName)!.set(dwName, schema);
-          dwMap.delete(dwName);
-          if (isDebugEnabled()) console.debug(LOG_PREFIX, `Re-bucketed schema: ${fullKey} -> ${newTabId}`);
-        }
-      }
-      if (dwMap.size === 0) unknownSchemas.delete(tabName);
-    }
-  }
-
-  const unknownData = state.allDataWindows.get('unknown');
-  if (unknownData) {
-    for (const [tabName, dwMap] of unknownData.entries()) {
-      for (const [dwName, rows] of dwMap.entries()) {
-        const fullKey = tabName === 'ROOT' ? dwName : `${tabName}.${dwName}`;
-        const newTabId = getTabIdForDw(fullKey);
-        if (newTabId !== 'unknown') {
-          if (!state.allDataWindows.has(newTabId)) state.allDataWindows.set(newTabId, new Map());
-          const bucket = state.allDataWindows.get(newTabId)!;
-          if (!bucket.has(tabName)) bucket.set(tabName, new Map());
-          bucket.get(tabName)!.set(dwName, rows);
-          dwMap.delete(dwName);
-          if (isDebugEnabled()) console.debug(LOG_PREFIX, `Re-bucketed data: ${fullKey} -> ${newTabId}`);
-        }
-      }
-      if (dwMap.size === 0) unknownData.delete(tabName);
-    }
-  }
-
-  const unknownProps = state.windowFieldProperties.get('unknown');
-  if (unknownProps) {
-    for (const [tabName, dwMap] of unknownProps.entries()) {
-      for (const [dwName, fields] of dwMap.entries()) {
-        const fullKey = tabName === 'ROOT' ? dwName : `${tabName}.${dwName}`;
-        const newTabId = getTabIdForDw(fullKey);
-        if (newTabId !== 'unknown') {
-          if (!state.windowFieldProperties.has(newTabId)) state.windowFieldProperties.set(newTabId, new Map());
-          const bucket = state.windowFieldProperties.get(newTabId)!;
-          if (!bucket.has(tabName)) bucket.set(tabName, new Map());
-          bucket.get(tabName)!.set(dwName, fields);
-          dwMap.delete(dwName);
-          if (isDebugEnabled()) console.debug(LOG_PREFIX, `Structure: Re-bucketed metadata: ${fullKey} -> ${newTabId}`);
-        }
-      }
-      if (dwMap.size === 0) unknownProps.delete(tabName);
-    }
-  }
+export const trackActiveContext = (_response: any, _url: string) => {
+  console.warn(LOG_PREFIX, 'trackActiveContext is deprecated. Use Context Manager logic instead.');
 };
 
-/**
- * Authority for P21 record data and schemas.
- */
-export const trackActiveContext = (response: P21DesignResponse | any, _url: string): void => {
-  if (isDebugEnabled()) console.debug(LOG_PREFIX, `Context Update: Processing inbound response from ${_url}`);
-
-  if (!response) return;
-
-  // 0. Handle Structural Preferences (Layout discovery)
-  const prefs = Array.isArray(response) ? response : undefined;
-  if (prefs && _url.toLowerCase().includes('/window/multiprefs')) {
-    if (isDebugEnabled()) console.info(LOG_PREFIX, 'Structure: Processing window layout manifest (multiprefs).');
-
-    prefs.forEach((p: any) => {
-      if (p.PreferenceName === 'tab.pageorder' && typeof p.PreferenceValue === 'string') {
-        const containerId = p.ObjectName;
-        const tabs = p.PreferenceValue.split(',').map((t: string) => t.trim().toUpperCase());
-
-        if (!state.dataWindowSchemas.has(containerId)) state.dataWindowSchemas.set(containerId, new Map());
-        if (!state.allDataWindows.has(containerId)) state.allDataWindows.set(containerId, new Map());
-
-        const schemaBucket = state.dataWindowSchemas.get(containerId)!;
-        const dataBucket = state.allDataWindows.get(containerId)!;
-
-        tabs.forEach((tabName: string) => {
-          if (!schemaBucket.has(tabName)) schemaBucket.set(tabName, new Map());
-          if (!dataBucket.has(tabName)) dataBucket.set(tabName, new Map());
-        });
-
-        if (isDebugEnabled()) console.debug(LOG_PREFIX, `Structure: Container "${containerId}" initialized with ${tabs.length} tabs.`);
-      }
-    });
-    rebucketData();
-    deriveP21TabId();
-    return;
-  }
-
-  if (typeof response !== 'object') return;
-
-  const { Result, Data } = response;
-
-  // 1. Extract Window Name
-  if (!state.activeContext.windowName) {
-    try {
-      const urlObj = new URL(_url, window.location.href);
-      const wn = urlObj.searchParams.get('wn');
-      if (wn && wn.startsWith('w_')) {
-        state.activeContext.windowName = wn;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  if (Result?.Name && Result.Name !== 'page' && Result.Name.startsWith('w_')) {
-    state.activeContext.windowName = Result.Name;
-  }
-
-  // 2. Track DataWindow Schemas and Values
-  const dataSource = Data || {};
-  Object.entries(dataSource as Record<string, unknown>).forEach(([dwKey, value]) => {
-    if (!value || typeof value !== 'object') return;
-
-    let parts = dwKey.split('.');
-    let tabName = parts.length > 1 ? parts[0] : 'ROOT';
-    let dwName = parts.length > 1 ? parts[1] : parts[0];
-
-    // If the data arrives with a simple DW name (e.g., from /data/data),
-    // attempt to resolve its full tab-prefixed identity from existing schema definitions.
-    if (tabName === 'ROOT') {
-      for (const container of state.dataWindowSchemas.values()) {
-        for (const [tName, dws] of container.entries()) {
-          if (dws.has(dwName)) {
-            tabName = tName;
-            break;
-          }
-        }
-        if (tabName !== 'ROOT') break;
-      }
-    }
-
-    const resolvedPath = tabName === 'ROOT' ? dwName : `${tabName}.${dwName}`;
-    const p21TabId = getTabIdForDw(resolvedPath);
-
-    // Ensure bucket exists in nested maps
-    if (!state.dataWindowSchemas.has(p21TabId)) state.dataWindowSchemas.set(p21TabId, new Map());
-    if (!state.allDataWindows.has(p21TabId)) state.allDataWindows.set(p21TabId, new Map());
-
-    const bucketSchemas = state.dataWindowSchemas.get(p21TabId) as Map<string, Map<string, Set<string>>>;
-    const bucketData = state.allDataWindows.get(p21TabId) as Map<string, Map<string, Record<string, unknown>[]>>;
-
-    if (!bucketSchemas.has(tabName)) bucketSchemas.set(tabName, new Map());
-    if (!bucketData.has(tabName)) bucketData.set(tabName, new Map());
-
-    const tabSchemas = bucketSchemas.get(tabName) as Map<string, Set<string>>;
-    const tabData = bucketData.get(tabName) as Map<string, Record<string, unknown>[]>;
-
-    // 2a. Update/Merge Schemas
-    // P21 often returns partial data updates. We append new fields to the existing schema
-    // rather than overwriting it, ensuring address discovery doesn't lose field context.
-    const sample = Array.isArray(value) ? value[0] : value;
-    if (sample) {
-      const existingSchema = tabSchemas.get(dwName) || new Set<string>();
-      Object.keys(sample).forEach((key) => existingSchema.add(key));
-      tabSchemas.set(dwName, existingSchema);
-    }
-
-    // 2b. Merge Data Rows
-    if (Array.isArray(value)) {
-      const existingRows = (tabData.get(dwName) || []) as Record<string, unknown>[];
-      const mergedRows = [...existingRows];
-      value.forEach((newRow: any) => {
-        if (newRow && typeof newRow === 'object') {
-          const rowIndex = parseInt(newRow._internalrowindex, 10);
-          if (!isNaN(rowIndex) && rowIndex > 0) {
-            const idx = rowIndex - 1;
-            mergedRows[idx] = { ...mergedRows[idx], ...newRow };
-          } else if (mergedRows.length === 0 || value.length === 1) {
-            mergedRows[0] = { ...mergedRows[0], ...newRow };
-          }
-        }
-      });
-      tabData.set(dwName, mergedRows as Record<string, unknown>[]);
-    } else {
-      const rows = (tabData.get(dwName) || [{}]) as Record<string, unknown>[];
-      rows[0] = { ...rows[0], ...(value as Record<string, unknown>) };
-      tabData.set(dwName, rows);
-    }
-  });
-
-  // 3. Track Active Tab/DW (Context Identity)
-  // Update the global active context identity only when the response contains structural result data.
-  // Pure data updates (/data/data) should refresh 'allDataWindows' without shifting the global active view.
-  if (Result) {
-    if (Result.TabDefinition?.UniqueName) {
-      state.activeContext.tabName = Result.TabDefinition.UniqueName;
-    }
-
-    const relevantKey = Object.keys(dataSource).find((key) => key.includes('.'));
-    if (relevantKey) {
-      const [tn, dw] = relevantKey.split('.');
-      state.activeContext.tabName = tn;
-      state.activeContext.dataWindow = dw;
-    }
-  }
-
-  deriveP21TabId();
-
-  // 4. Process field properties
-  if (Result?.PropertiesSet) {
-    const path = state.activeContext.tabName && state.activeContext.dataWindow ? `${state.activeContext.tabName}.${state.activeContext.dataWindow}` : '';
-    processDataWindowProperties(Result.PropertiesSet, path);
-  }
-  if (Result?.Properties) {
-    Object.entries(Result.Properties).forEach(([path, props]) => {
-      processDataWindowProperties(props as P21DataWindowProperties, path);
-    });
-  }
-
-  if (isDebugEnabled() && localStorage.getItem('p21ExtDebugFull') === 'true') {
-    console.debug(LOG_PREFIX, 'State updated. Current snapshot:', getLoggableState());
-  }
-};
-
-const deriveP21TabId = () => {
-  if (state.activeContext.tabName) {
-    const tabName = state.activeContext.tabName.toUpperCase();
-    for (const [containerId, tabMap] of state.dataWindowSchemas.entries()) {
-      if (containerId === 'unknown' || containerId === 'global') continue;
-      if (tabMap.has(tabName)) {
-        state.activeContext.p21TabId = containerId;
-        if (isDebugEnabled()) console.debug(LOG_PREFIX, `State: p21TabId derived as "${containerId}" for tab "${state.activeContext.tabName}".`);
-        return;
-      }
-    }
-  }
-};
-
-const processDataWindowProperties = (propertiesContainer: P21DataWindowProperties, dwPath: string) => {
-  // Process modern property arrays
-  propertiesContainer.visible?.forEach((entry) => updateMetadata(entry, 'visible', dwPath));
-  propertiesContainer.enabled?.forEach((entry) => updateMetadata(entry, 'enabled', dwPath));
-
-  // Process legacy/combined property array (often used in history/design responses)
-  propertiesContainer.Properties?.forEach((entry) => updateMetadata(entry, 'generic', dwPath));
-};
-
-const updateMetadata = (propEntry: P21FieldProperty, type: 'visible' | 'enabled' | 'generic', dwPath: string) => {
-  // Relaxed indexing: Form-level metadata often omits index;
-  // P21 uses '1' or '0' for header/schema properties.
-  const rowIndex = propEntry._internalrowindex;
-  if (rowIndex !== undefined && rowIndex !== null && String(rowIndex) !== '1' && String(rowIndex) !== '0') return;
-
-  // Prioritize internal metadata pathing over the inferred dwPath
-  const path = (propEntry.tabpagename && propEntry.dwname ? `${propEntry.tabpagename}.${propEntry.dwname}` : dwPath) || '';
-  if (!path) return;
-
-  const containerId = getTabIdForDw(path);
-  const parts = path.split('.');
-  const tabName = parts.length > 1 ? parts[0] : 'ROOT';
-  const dwName = parts.length > 1 ? parts[1] : parts[0];
-
-  // Ensure hierarchy exists
-  if (!state.windowFieldProperties.has(containerId)) {
-    state.windowFieldProperties.set(containerId, new Map());
-  }
-  const containerMap = state.windowFieldProperties.get(containerId)!;
-
-  if (!containerMap.has(tabName)) {
-    containerMap.set(tabName, new Map());
-  }
-  const tabMap = containerMap.get(tabName)!;
-
-  if (!tabMap.has(dwName)) tabMap.set(dwName, new Map());
-  const fieldMap = tabMap.get(dwName)!;
-
-  for (const fieldName in propEntry) {
-    if (['_internalrowindex', 'Properties_Id', 'dwname', 'tabpagename'].includes(fieldName)) continue;
-
-    if (!fieldMap.has(fieldName)) fieldMap.set(fieldName, { visible: true, enabled: true });
-
-    const val = propEntry[fieldName];
-    const isTrue = val === 'true' || val === true || val === '1' || val === 1;
-
-    const metadata = fieldMap.get(fieldName)!;
-    if (type === 'visible') metadata.visible = isTrue;
-    else if (type === 'enabled') metadata.enabled = isTrue;
-    else {
-      // Generic/Legacy entries usually denote visibility
-      metadata.visible = isTrue;
-    }
-  }
-};
-
-const getLoggableState = () => {
+export const getLoggableState = () => {
   return {
     ...state,
     dataWindowSchemas: Object.fromEntries(
@@ -379,32 +130,33 @@ export const getDataWindowSchemaCount = () => {
 };
 
 export const getDataWindowSchemaEntries = () => {
-  const { p21TabId, tabName: activeTabName } = state.activeContext;
+  const { p21TabId, tabName: activeTabName, sectionActiveTabs } = state.activeContext;
   const entries: [string, Set<string>][] = [];
 
-  // Aggregate entries from global, unknown, and the specific active container,
-  // but filter by the active tab page to prevent cross-tab contamination.
-  ['global', 'unknown', p21TabId].forEach((bucketId) => {
-    if (!bucketId) return;
-    const container = state.dataWindowSchemas.get(bucketId);
-    if (container) {
-      for (const [tabName, dws] of container.entries()) {
-        if (tabName !== 'ROOT' && activeTabName && tabName !== activeTabName) continue;
+  // Iterate through all known sections (containers)
+  for (const [containerId, container] of state.dataWindowSchemas.entries()) {
+    const isPersistent = containerId === 'global' || containerId === 'unknown';
 
+    // Determine the active tab for this section. Fallback to the primary active tab if it's the focused section.
+    const activeTabForSection = sectionActiveTabs?.[containerId] || (containerId === p21TabId ? activeTabName : undefined);
+
+    for (const [tabName, dws] of container.entries()) {
+      // Rule: Include if it's a persistent bucket, a ROOT (header) DW,
+      // or the specifically active tab for this section.
+      const isActive = tabName === 'ROOT' || (activeTabForSection && tabName === activeTabForSection);
+
+      if (isPersistent || isActive) {
         for (const [dwName, fields] of dws.entries()) {
           entries.push([tabName === 'ROOT' ? dwName : `${tabName}.${dwName}`, fields]);
         }
       }
     }
-  });
-
-  if (isDebugEnabled()) {
-    console.debug(LOG_PREFIX, `Query: Listing aggregated schema entries for context "${p21TabId || 'none'}":`, entries);
   }
+
   return entries;
 };
 
-export const getP21Value = (fieldName: string) => {
+export const getP21Value = (fieldName: string): any => {
   let result: any = undefined;
   if (isDebugEnabled()) console.debug(LOG_PREFIX, `Query: Searching DataWindows for field value: ${fieldName}`);
 
@@ -454,27 +206,38 @@ export const getFieldMetadata = (dwKey: string, fieldName: string) => {
   return metadata;
 };
 
-window.addEventListener('p21-ext:transaction-reset', (event: any) => {
-  const { identity } = event.detail;
-  state.activeContext = {
-    windowName: state.activeContext.windowName,
-    p21TabId: state.activeContext.p21TabId, // Preserve the container mapping
-  };
-  state.allDataWindows.clear();
-  state.windowFieldProperties.clear();
-
-  if (isDebugEnabled()) {
-    console.info(LOG_PREFIX, `Transaction Reset: Wiping transient data/properties for identity "${identity}". Structural schemas preserved.`);
-  }
-});
-
 const win = window as any;
+
+if (!win.__p21StateStoreInstalled) {
+  window.addEventListener('p21-ext:transaction-reset', (event: any) => {
+    const { identity } = event.detail;
+    state.activeContext = {
+      windowName: state.activeContext.windowName,
+      p21TabId: state.activeContext.p21TabId,
+      sectionActiveTabs: {},
+    };
+    state.allDataWindows.clear();
+    state.windowFieldProperties.clear();
+
+    notifySubscribers();
+    if (isDebugEnabled()) {
+      console.info(LOG_PREFIX, `Transaction Reset: Wiping transient data/properties for identity "${identity}". Structural schemas preserved.`);
+    }
+  });
+  win.__p21StateStoreInstalled = true;
+}
+
 win.__p21StateStore = {
-  trackActiveContext,
+  subscribe,
+  updateActiveContext,
+  updateSchemas,
+  updateDataRows,
+  updateFieldProperties,
   getActiveContext,
   getDataWindowSchema,
   getDataWindowSchemaCount,
   getDataWindowSchemaEntries,
   getP21Value,
   getFieldMetadata,
+  getLoggableState,
 };

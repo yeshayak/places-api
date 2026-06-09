@@ -94,6 +94,7 @@ export interface P21ActiveContext {
   tabName?: string;
   p21TabId?: string; // e.g., 'tab_1', 'tab_2'
   dataWindow?: string;
+  sectionActiveTabs?: Record<string, string>;
 }
 
 export interface P21DataContextUpdatedDetail {

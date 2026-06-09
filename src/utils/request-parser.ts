@@ -83,9 +83,6 @@ const classifyEndpoint = (path: string): P21EndpointKind => {
   if (path.includes('/api/v2/transaction') || path.includes('/transaction')) {
     return 'transaction';
   }
-  if (path.includes('/ui/full/')) {
-    return 'ui-full';
-  }
   return 'unknown';
 };
 

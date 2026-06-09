@@ -2,7 +2,7 @@ import {} from './context-manager';
 import { attachSandboxLauncher, openSandbox } from './address-sandbox-launcher';
 import { ADDR1_REGEX, ADDR_NAME_REGEX, getContainerSelector, isFieldEnabled } from './p21-data-endpoint';
 import { getActiveContext, getDataWindowSchema, getDataWindowSchemaCount, getP21Value } from './state-store';
-import { isAddressContextActive } from './endpoint-router';
+import { isAddressContextActive } from './feature-router';
 import { duplicateCheck } from './utils/duplicate-check';
 import type { P21DataContextUpdatedDetail } from './types/p21-types';
 
@@ -242,6 +242,9 @@ export const installAddressAutocomplete = (): void => {
   });
 
   window.addEventListener('p21-ext:action-monitor-event', (event: any) => {
+    // Ensure action detail and name are not empty before triggering UI discovery
+    if (!event.detail || !event.detail.name) return;
+
     const { name } = event.detail;
     if (name?.includes('selectionchanged')) {
       discoverAndAttachAddressUI();

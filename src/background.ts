@@ -10,7 +10,14 @@ const isP21WindowUrl = (url: string | undefined): boolean => Boolean(url && p21W
 
 const sendTabMessage = (tabId: number, message: unknown): void => {
   chrome.tabs.sendMessage(tabId, message, () => {
-    void chrome.runtime.lastError;
+    const lastError = chrome.runtime.lastError;
+    if (lastError) {
+      // Accessing lastError is necessary to suppress the "Unchecked runtime.lastError" warning.
+      // We ignore "Receiving end does not exist" as it occurs normally during page load or navigation transitions.
+      if (!lastError.message?.includes('Receiving end does not exist')) {
+        console.debug(`[P21 BG] sendMessage error for tab ${tabId}:`, lastError.message);
+      }
+    }
   });
 };
 
@@ -59,11 +66,12 @@ const ensureContentScript = (tabId: number, url: string, onReady?: () => void): 
             },
             () => {
               if (chrome.runtime.lastError) {
-                void chrome.runtime.lastError;
                 return;
               }
 
-              onReady?.();
+              // A small delay ensures the content script has fully initialized
+              // and registered its message listeners before the first message is sent.
+              setTimeout(() => onReady?.(), 150);
             },
           );
         },

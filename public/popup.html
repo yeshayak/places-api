@@ -11,11 +11,52 @@
       <h2>Places API Settings</h2>
       <form id="config-form">
         <label for="apiKey">Google Maps API Key</label>
-        <input type="text" id="apiKey" name="apiKey" placeholder="Enter your API key" required />
+        <div class="input-group">
+          <input type="password" id="apiKey" name="apiKey" placeholder="Enter your API key" required />
+          <button type="button" id="togglePassword" class="toggle-password">👁️</button>
+        </div>
+
+        <div class="feature-controls">
+          <label>Feature Controls</label>
+          <div class="feature-item">
+            <div class="feature-info">
+              <span class="feature-name">Address Autocomplete</span>
+              <span class="feature-desc">Enhances address input fields.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="feat-address" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="feature-item">
+            <div class="feature-info">
+              <span class="feature-name">Payment Link Generation</span>
+              <span class="feature-desc">Generates payment links for customers.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="feat-payment" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="feature-item">
+            <div class="feature-info">
+              <span class="feature-name">Supplier Cost Sync</span>
+              <span class="feature-desc">Synchronizes supplier cost data.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="feat-cost" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
         <button type="submit">Save</button>
         <div id="status"></div>
       </form>
-      <button id="enable-site-btn" type="button">Enable on this site</button>
+      <div id="site-enable-container">
+        <button id="enable-site-btn" type="button">Enable on this site</button>
+        <div id="site-enabled-msg" class="hide">Site Enabled!</div>
+      </div>
     </div>
     <script src="../src/popup"></script>
   </body>

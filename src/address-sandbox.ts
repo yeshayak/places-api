@@ -3,12 +3,17 @@ import { loadGoogleMaps } from './utils/load-map';
 
 const LOG_PREFIX = '[P21 SANDBOX]';
 
+let isInitialized = false;
+
 /**
  * This script runs inside the extension iframe.
  * It handles the Google Places interaction and sends data back to the P21 page.
  */
 window.addEventListener('message', async (event) => {
   if (event.data?.type === 'INIT_SANDBOX' && event.data.apiKey) {
+    if (isInitialized) return;
+    isInitialized = true;
+
     await initAutocomplete(event.data.apiKey, event.data.initialValue);
     console.log('[P21 SANDBOX] Google Places Autocomplete initialized.', event);
   }
@@ -60,17 +65,17 @@ async function initAutocomplete(apiKey: string, initialValue?: string): Promise<
   console.debug(LOG_PREFIX, 'Places UI: Autocomplete element attached to DOM.');
 
   // Modern API uses the gmp-select event
-  autocompleteElement.addEventListener('gmp-select', async (event: { placePrediction: any }) => {
+  autocompleteElement.addEventListener('gmp-select', async (event: any) => {
     const { placePrediction } = event;
 
-    if (!placePrediction) {
-      console.warn(LOG_PREFIX, 'Event: Selection fired without prediction data.');
+    // The gmp-select event provides a placePrediction property.
+    // We convert it to a Place object to ensure fetchFields is available.
+    const place = placePrediction ? placePrediction.toPlace() : event.target.value;
+
+    if (!place || typeof place.fetchFields !== 'function') {
+      console.error(LOG_PREFIX, 'Event: Selected place object is missing fetchFields method.', place);
       return;
     }
-
-    // Convert the prediction to a Place object
-    const place = placePrediction.toPlace();
-    console.debug(LOG_PREFIX, `Event: Selection confirmed. Fetching details for: ${place.id}`);
 
     try {
       await place.fetchFields({

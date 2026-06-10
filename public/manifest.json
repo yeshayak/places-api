@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "P21 Helper",
   "short_name": "P21 Helper",
-  "version": "1.0.2.6",
+  "version": "1.0.2.7",
   "description": "Enhances Prophet 21 with address lookup, Places autocomplete, duplicate checks, and P21 workflow helpers.",
   "permissions": [
     "scripting",

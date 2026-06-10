@@ -13,7 +13,7 @@ import { initPaymentWorkflow } from './payment-link-workflow';
 const LOG_PREFIX = '[P21 ROUTER]';
 let lastWindowName = '';
 
-const isFeatureEnabled = (featureKey: string): boolean => {
+export const isFeatureEnabled = (featureKey: string): boolean => {
   const meta = document.head.querySelector('meta[name="places-api-injected"]');
   return meta?.getAttribute(`data-feat-${featureKey}`) === 'true';
 };

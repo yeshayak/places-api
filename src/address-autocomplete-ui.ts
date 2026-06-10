@@ -2,7 +2,7 @@ import {} from './context-manager';
 import { attachSandboxLauncher, openSandbox } from './address-sandbox-launcher';
 import { ADDR1_REGEX, ADDR_NAME_REGEX, getContainerSelector, isFieldEnabled } from './p21-data-endpoint';
 import { getActiveContext, getDataWindowSchema, getDataWindowSchemaCount, getP21Value } from './state-store';
-import { isAddressContextActive } from './feature-router';
+import { isAddressContextActive, isFeatureEnabled } from './feature-router';
 import { duplicateCheck } from './utils/duplicate-check';
 import type { P21DataContextUpdatedDetail } from './types/p21-types';
 
@@ -58,6 +58,11 @@ const attachDuplicateCheckListeners = (): void => {
  */
 export const discoverAndAttachAddressUI = (retryCount = 0): void => {
   if (discoveryTimeout) window.clearTimeout(discoveryTimeout);
+
+  // Verify feature enablement before proceeding with DOM scans or attachments
+  if (!isFeatureEnabled('address')) {
+    return;
+  }
 
   // Always attempt to attach duplicate check listeners, bypassing the identity cache
   attachDuplicateCheckListeners();
@@ -127,6 +132,8 @@ const bindAddressHotkey = (): void => {
 
   window.addEventListener('keydown', (event: KeyboardEvent) => {
     if (event.altKey && event.key.toLowerCase() === 'a') {
+      if (!isFeatureEnabled('address')) return;
+
       const anchor = findAnchorInput();
       if (anchor) {
         event.preventDefault();

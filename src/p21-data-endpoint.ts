@@ -53,7 +53,7 @@ export const getContainerSelector = (element: HTMLElement): string => {
  * Builds field updates by discovering the correct DataWindow and field names
  * using tracked metadata schemas from previous design/data responses.
  */
-export const buildAddressUpdates = (containerSelector: string, place: P21AddressUpdateValue, includeName: boolean): P21FieldUpdate[] => {
+const buildAddressUpdates = (containerSelector: string, place: P21AddressUpdateValue, includeName: boolean): P21FieldUpdate[] => {
   // Identify a preferred DataWindow path from the container's DOM ID or selector string.
   let preferredDwPath = '';
   // The containerSelector is expected to be like `[id="TP_SHIPTO.shipto"]` or `[id="shipto"]`
@@ -212,7 +212,7 @@ const triggerAngularRefresh = (): void => {
   });
 };
 
-export const triggerFieldUpdates = async (fields: P21FieldUpdate[], containerSelector?: string): Promise<P21DataEndpointUpdateResult> => {
+const triggerFieldUpdates = async (fields: P21FieldUpdate[], containerSelector?: string): Promise<P21DataEndpointUpdateResult> => {
   if (fields.length === 0) {
     return {
       ok: false,

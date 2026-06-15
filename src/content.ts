@@ -16,7 +16,7 @@
     meta.setAttribute('data-sandbox-url', chrome.runtime.getURL('sandbox.html'));
 
     // Pre-cache settings in the DOM for synchronous retrieval by injected modules
-    chrome.storage.local.get(['apiKey', 'feat_address', 'feat_payment', 'feat_cost'], (result) => {
+    chrome.storage.local.get(['apiKey', 'feat_address', 'feat_payment', 'feat_cost', 'feat_one_time_price'], (result) => {
       if (!chrome.runtime?.id) return;
       if (result.apiKey) meta.setAttribute('data-api-key', result.apiKey.trim());
 
@@ -24,6 +24,7 @@
       meta.setAttribute('data-feat-address', String(result.feat_address !== false));
       meta.setAttribute('data-feat-payment', String(result.feat_payment !== false));
       meta.setAttribute('data-feat-cost', String(result.feat_cost !== false));
+      meta.setAttribute('data-feat-one-time-price', String(result.feat_one_time_price !== false));
     });
   }
   document.head.appendChild(meta);
@@ -32,7 +33,7 @@
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
 
-    const keys = ['apiKey', 'feat_address', 'feat_payment', 'feat_cost'];
+    const keys = ['apiKey', 'feat_address', 'feat_payment', 'feat_cost', 'feat_one_time_price'];
     keys.forEach((key) => {
       if (changes[key]) {
         const attrName = key === 'apiKey' ? 'data-api-key' : `data-${key.replace('_', '-')}`;

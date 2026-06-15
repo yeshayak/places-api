@@ -12,16 +12,18 @@ document.addEventListener('DOMContentLoaded', () => {
     address: document.getElementById('feat-address') as HTMLInputElement,
     payment: document.getElementById('feat-payment') as HTMLInputElement,
     cost: document.getElementById('feat-cost') as HTMLInputElement,
+    one_time_price: document.getElementById('feat-one-time-price') as HTMLInputElement,
   };
 
   // Load saved API key from chrome.storage.local (authoritative)
-  chrome.storage.local.get(['apiKey', 'feat_address', 'feat_payment', 'feat_cost'], (result) => {
+  chrome.storage.local.get(['apiKey', 'feat_address', 'feat_payment', 'feat_cost', 'feat_one_time_price'], (result) => {
     if (result.apiKey) apiKeyInput.value = result.apiKey;
 
     // Default features to true if not set
     featureToggles.address.checked = result.feat_address !== false;
     featureToggles.payment.checked = result.feat_payment !== false;
     featureToggles.cost.checked = result.feat_cost !== false;
+    featureToggles.one_time_price.checked = result.feat_one_time_price !== false;
   });
 
   // Auto-save features on toggle change
@@ -30,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
       feat_address: featureToggles.address.checked,
       feat_payment: featureToggles.payment.checked,
       feat_cost: featureToggles.cost.checked,
+      feat_one_time_price: featureToggles.one_time_price.checked,
     };
     chrome.storage.local.set(settings);
 
@@ -88,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
       feat_address: featureToggles.address.checked,
       feat_payment: featureToggles.payment.checked,
       feat_cost: featureToggles.cost.checked,
+      feat_one_time_price: featureToggles.one_time_price.checked,
     };
 
     chrome.storage.local.set(settings, () => {

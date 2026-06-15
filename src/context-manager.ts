@@ -1,7 +1,7 @@
 import type { P21DesignResponse, P21DataContextUpdatedDetail, P21DataWindowProperties, P21FieldProperty, P21ActiveContext } from './types/p21-types';
 import type { P21XhrResponseEventDetail } from './types/request-types';
 import { updateActiveContext, updateSchemas, updateDataRows, updateFieldProperties, getLoggableState, getActiveContext } from './state-store';
-import { isAddressRelated } from './feature-router';
+import { isAddressRelated } from './address-response';
 
 interface P21ContextMonitorWindow extends Window {
   __p21ContextMonitorInstalled?: boolean;
@@ -169,7 +169,7 @@ const processProperties = (container: P21DataWindowProperties, path: string) => 
   container.Properties?.forEach((e) => update(e, 'generic'));
 };
 
-export const installP21ContextMonitor = (): void => {
+const installP21ContextMonitor = (): void => {
   if (contextMonitorWindow.__p21ContextMonitorInstalled) return;
   contextMonitorWindow.__p21ContextMonitorInstalled = true;
 

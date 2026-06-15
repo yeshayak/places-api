@@ -1,9 +1,10 @@
-import { getActiveContext, getDataWindowSchemaEntries, subscribe } from './state-store';
-import { ADDR1_REGEX } from './p21-data-endpoint';
-import type { P21DesignResponse } from './types/p21-types';
+import { getActiveContext, subscribe } from './state-store';
+import { isAddressContextActive } from './active-address-context';
+import { isFeatureEnabled } from './feature-flags';
 import { installAddressAutocomplete } from './address-autocomplete-ui';
 import { initSupplierCostWorkflow } from './supplier-cost-workflow';
 import { initPaymentWorkflow } from './payment-link-workflow';
+import { initOneTimePriceWorkflow } from './one-time-price-workflow';
 
 /**
  * Layer 5 - Feature Router: Sole authority for feature enablement.
@@ -12,11 +13,6 @@ import { initPaymentWorkflow } from './payment-link-workflow';
 
 const LOG_PREFIX = '[P21 ROUTER]';
 let lastWindowName = '';
-
-export const isFeatureEnabled = (featureKey: string): boolean => {
-  const meta = document.head.querySelector('meta[name="places-api-injected"]');
-  return meta?.getAttribute(`data-feat-${featureKey}`) === 'true';
-};
 
 export const initializeFeatureRouting = () => {
   console.info(LOG_PREFIX, 'Feature Router: Active.');
@@ -70,22 +66,14 @@ export const initializeFeatureRouting = () => {
     if (isFeatureEnabled('cost') && windowName === 'w_purchase_order_entry_sheet') {
       initSupplierCostWorkflow();
     }
+
+    if (isFeatureEnabled('one-time-price') && windowName === 'w_order_entry_sheet') {
+      initOneTimePriceWorkflow();
+    }
   };
 
   subscribe((state) => route(state.activeContext));
   route(getActiveContext());
-};
-
-export const isAddressRelated = (response: P21DesignResponse): boolean => {
-  if (!response) return false;
-  const hasAddressData = response.Data && Object.values(response.Data).some((rows) => Array.isArray(rows) && rows.length > 0 && rows[0] && Object.keys(rows[0]).some((k) => ADDR1_REGEX.test(k)));
-  const hasAddressEvents = response.Events?.some((e) => ADDR1_REGEX.test(e.EventData?.dwproperty_column || ''));
-  return !!(hasAddressData || hasAddressEvents);
-};
-
-export const isAddressContextActive = (): boolean => {
-  const trackedSchemas = getDataWindowSchemaEntries();
-  return trackedSchemas.some(([, schema]: [string, Set<string>]) => Array.from(schema).some((field) => ADDR1_REGEX.test(field)));
 };
 
 initializeFeatureRouting();

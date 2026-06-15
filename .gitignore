@@ -27,3 +27,4 @@ yarn-error.log*
 
 # Ignore local config with secrets
 src/config.ts
+.fallow/

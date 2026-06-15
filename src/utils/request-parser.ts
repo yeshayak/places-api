@@ -6,6 +6,19 @@ interface ParseP21RequestInput {
   body?: unknown;
 }
 
+const STATIC_ASSET_REGEX = /\.(js|css|html|svg|png|jpg|jpeg|gif|woff|woff2|ttf|eot|ico|json)$/i;
+
+const ENDPOINT_MATCHERS: Array<[P21EndpointKind, (path: string) => boolean]> = [
+  ['data', (path) => path.endsWith('/ui/full/v2/data/data') || path.endsWith('/ui/full/v1/data/data')],
+  ['design', (path) => path.includes('/design')],
+  ['clear', (path) => path.includes('/tools/Quick.Clear')],
+  ['save', (path) => path.includes('/tools/Quick.Save')],
+  ['history', (path) => path.includes('/ui/full/v2/window/history')],
+  ['multiprefs', (path) => path.includes('/window/multiprefs')],
+  ['grid', (path) => path.includes('/ui/full/v1/grid')],
+  ['transaction', (path) => path.includes('/api/v2/transaction') || path.includes('/transaction')],
+];
+
 export const parseP21Request = (input: ParseP21RequestInput): ParsedP21Request => {
   const parsedUrl = parseUrl(input.url);
   const endpointKind = classifyEndpoint(parsedUrl.path);
@@ -54,36 +67,8 @@ export const parseP21Payload = (raw: string | unknown): ParsedP21Payload => {
 };
 
 const classifyEndpoint = (path: string): P21EndpointKind => {
-  // Detect static assets to prevent unnecessary monitoring overhead
-  if (/\.(js|css|html|svg|png|jpg|jpeg|gif|woff|woff2|ttf|eot|ico|json)$/i.test(path)) {
-    return 'static';
-  }
-
-  if (path.endsWith('/ui/full/v2/data/data') || path.endsWith('/ui/full/v1/data/data')) {
-    return 'data';
-  }
-  if (path.includes('/design')) {
-    return 'design';
-  }
-  if (path.includes('/tools/Quick.Clear')) {
-    return 'clear';
-  }
-  if (path.includes('/tools/Quick.Save')) {
-    return 'save';
-  }
-  if (path.includes('/ui/full/v2/window/history')) {
-    return 'history';
-  }
-  if (path.includes('/window/multiprefs')) {
-    return 'multiprefs';
-  }
-  if (path.includes('/ui/full/v1/grid')) {
-    return 'grid';
-  }
-  if (path.includes('/api/v2/transaction') || path.includes('/transaction')) {
-    return 'transaction';
-  }
-  return 'unknown';
+  if (STATIC_ASSET_REGEX.test(path)) return 'static';
+  return ENDPOINT_MATCHERS.find(([, matches]) => matches(path))?.[0] || 'unknown';
 };
 
 const parseUrl = (url: string): { normalizedUrl: string; path: string; query: Record<string, string> } => {
@@ -104,20 +89,24 @@ const parseUrl = (url: string): { normalizedUrl: string; path: string; query: Re
 };
 
 const summarizePayload = (value: unknown): P21PayloadSummary | undefined => {
-  // Detect Preference Arrays (common in /multiprefs responses)
-  const preferences = Array.isArray(value) ? value.filter((v) => isRecord(v) && typeof v.ObjectName === 'string' && typeof v.PreferenceName === 'string') : undefined;
-
-  if (Array.isArray(value)) {
-    return preferences && preferences.length > 0
-      ? {
-          topLevelKeys: ['Array'],
-          preferences: preferences as any,
-        }
-      : undefined;
-  }
+  if (Array.isArray(value)) return summarizeArrayPayload(value);
 
   if (!isRecord(value)) return undefined;
+  return summarizeRecordPayload(value);
+};
 
+const summarizeArrayPayload = (value: unknown[]): P21PayloadSummary | undefined => {
+  const preferences = extractPreferences(value);
+  return preferences.length > 0
+    ? {
+        topLevelKeys: ['Array'],
+        preferences: preferences as any,
+      }
+    : undefined;
+};
+
+const summarizeRecordPayload = (value: Record<string, unknown>): P21PayloadSummary => {
+  const preferences = extractPreferences(value);
   const data = getRecord(value.Data);
   const dataInformation = getRecord(value.DataInformation);
   const properties = getRecord(value.Properties);
@@ -143,6 +132,10 @@ const summarizePayload = (value: unknown): P21PayloadSummary | undefined => {
     messagesCount: messages?.length,
     preferences: preferences as any,
   };
+};
+
+const extractPreferences = (value: unknown): unknown[] => {
+  return Array.isArray(value) ? value.filter((v) => isRecord(v) && typeof v.ObjectName === 'string' && typeof v.PreferenceName === 'string') : [];
 };
 
 const extractTpItems = (value: Record<string, unknown>): unknown[] | undefined => {

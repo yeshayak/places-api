@@ -1,9 +1,11 @@
 import {} from './context-manager';
+import { findAnchorInput } from './address-anchor-discovery';
+import { attachDuplicateCheckListeners } from './address-duplicate-listeners';
 import { attachSandboxLauncher, openSandbox } from './address-sandbox-launcher';
 import { ADDR1_REGEX, ADDR_NAME_REGEX, getContainerSelector, isFieldEnabled } from './p21-data-endpoint';
-import { getActiveContext, getDataWindowSchema, getDataWindowSchemaCount, getP21Value } from './state-store';
-import { isAddressContextActive, isFeatureEnabled } from './feature-router';
-import { duplicateCheck } from './utils/duplicate-check';
+import { getActiveContext, getDataWindowSchemaCount } from './state-store';
+import { isAddressContextActive } from './active-address-context';
+import { isFeatureEnabled } from './feature-flags';
 import type { P21DataContextUpdatedDetail } from './types/p21-types';
 
 interface AddressAutocompleteWindow extends Window {
@@ -21,110 +23,86 @@ let lastTabName: string | undefined = undefined;
 const isDebugEnabled = (): boolean => localStorage.getItem('p21ExtDebug') === 'true';
 
 /**
- * Attaches listeners to Address1 fields to trigger duplicate checks on manual entry.
- */
-const attachDuplicateCheckListeners = (): void => {
-  const allInputs = Array.from(document.querySelectorAll('input'));
-  allInputs.forEach((input) => {
-    // Attach to Address1 fields that are enabled and haven't been tagged yet
-    if (ADDR1_REGEX.test(input.id || '') && isFieldEnabled(input) && !input.dataset.duplicateCheckAttached) {
-      if (isDebugEnabled()) console.debug(LOG_PREFIX, `Attaching duplicate check listener to: ${input.id}`);
-
-      const handleUpdate = () => {
-        const value = input.value.trim();
-        // Prevent redundant checks for the same value (e.g., both blur and change firing)
-        if (!value || value === input.dataset.lastCheckedValue) return;
-
-        if (isAddressContextActive() || getDataWindowSchemaCount() === 0) {
-          const customerId = getP21Value('customer_id');
-          if (isDebugEnabled()) console.debug(LOG_PREFIX, `Triggering duplicate check for manual change: ${value} (Customer: ${customerId})`);
-
-          input.dataset.lastCheckedValue = value;
-          duplicateCheck(value, customerId);
-        }
-      };
-
-      // Listen for both blur (tab out) and change (programmatic or manual enter)
-      input.addEventListener('blur', handleUpdate);
-      input.addEventListener('change', handleUpdate);
-
-      input.dataset.duplicateCheckAttached = 'true';
-    }
-  });
-};
-
-/**
  * Global discovery: finds address-related inputs and attaches search launchers.
  */
-export const discoverAndAttachAddressUI = (retryCount = 0): void => {
+const discoverAndAttachAddressUI = (retryCount = 0): void => {
   if (discoveryTimeout) window.clearTimeout(discoveryTimeout);
-
-  // Verify feature enablement before proceeding with DOM scans or attachments
-  if (!isFeatureEnabled('address')) {
-    return;
-  }
+  if (!isFeatureEnabled('address')) return;
 
   // Always attempt to attach duplicate check listeners, bypassing the identity cache
   attachDuplicateCheckListeners();
 
-  const { tabName, p21TabId, dataWindow } = getActiveContext();
-  const currentIdentity = p21TabId || tabName || dataWindow; // More robust identity
-
-  // Optimization: Use P21 Tab ID or tab name as authoritative identity.
+  const currentIdentity = getCurrentIdentity();
   if (retryCount === 0 && currentIdentity && currentIdentity === lastTabName) {
     return;
   }
 
-  discoveryTimeout = window.setTimeout(
-    async () => {
-      if (isInitializingUI) {
-        discoveryTimeout = null;
-        return;
-      }
+  discoveryTimeout = window.setTimeout(() => runAddressDiscovery(currentIdentity, retryCount), retryCount > 0 ? 300 : 200);
+};
 
-      try {
-        isInitializingUI = true;
+const getCurrentIdentity = (): string | undefined => {
+  const { tabName, p21TabId, dataWindow } = getActiveContext();
+  return p21TabId || tabName || dataWindow;
+};
 
-        if (isDebugEnabled() && currentIdentity !== lastTabName) {
-          console.log(`${LOG_PREFIX} UI Context identity initiated: "${currentIdentity}"`);
-        }
+const runAddressDiscovery = (currentIdentity: string | undefined, retryCount: number): void => {
+  if (isInitializingUI) {
+    discoveryTimeout = null;
+    return;
+  }
 
-        lastTabName = currentIdentity;
-        attachDuplicateCheckListeners();
+  try {
+    isInitializingUI = true;
+    logContextIdentity(currentIdentity);
+    lastTabName = currentIdentity;
+    attachDuplicateCheckListeners();
 
-        const context = getActiveContext();
-        const anchor = findAnchorInput(context);
-        const schemaCount = getDataWindowSchemaCount();
+    const context = getActiveContext();
+    const schemaCount = getDataWindowSchemaCount();
+    const canAttach = isAddressContextActive() || (schemaCount === 0 && Boolean(context.windowName));
+    const anchor = findAnchorInput(context);
 
-        if (anchor && (isAddressContextActive() || (schemaCount === 0 && context.windowName))) {
-          if ((anchor as HTMLElement).dataset.sandboxAttached) return;
+    if (anchor && canAttach) {
+      attachLaunchersForAnchor(anchor);
+      return;
+    }
 
-          const container = getContainerSelector(anchor);
-          const containerElement = (container ? document.querySelector(container) : null) || document;
+    if (canAttach && retryCount < 8) {
+      window.setTimeout(() => discoverAndAttachAddressUI(retryCount + 1), 300);
+    }
+  } finally {
+    isInitializingUI = false;
+    discoveryTimeout = null;
+  }
+};
 
-          if (ADDR_NAME_REGEX.test(anchor.id)) {
-            const nameInput = anchor as HTMLInputElement;
-            // Look for the corresponding Address1 field within the same container to ensure a valid, visible address block
-            const addr1 = Array.from(containerElement.querySelectorAll('input')).find((i) => ADDR1_REGEX.test(i.id) && isFieldEnabled(i) && i.isConnected && i.getClientRects().length > 0);
+const logContextIdentity = (currentIdentity: string | undefined): void => {
+  if (isDebugEnabled() && currentIdentity !== lastTabName) {
+    console.log(`${LOG_PREFIX} UI Context identity initiated: "${currentIdentity}"`);
+  }
+};
 
-            if (addr1) {
-              attachSandboxLauncher(nameInput, container, true);
-              attachSandboxLauncher(addr1 as HTMLInputElement, container, false, () => nameInput.value);
-            }
-          } else {
-            attachSandboxLauncher(anchor as HTMLInputElement, container, false, () => (anchor as HTMLInputElement).value);
-          }
-        } else if ((isAddressContextActive() || (schemaCount === 0 && context.windowName)) && retryCount < 8) {
-          // Only retry if we are in an address context OR we have a window name but no schemas yet (initial load)
-          window.setTimeout(() => discoverAndAttachAddressUI(retryCount + 1), 300);
-        }
-      } finally {
-        isInitializingUI = false;
-        discoveryTimeout = null;
-      }
-    },
-    retryCount > 0 ? 300 : 200,
-  ); // Debounce to prevent overlapping scans from rapid XHRs
+const attachLaunchersForAnchor = (anchor: HTMLElement): void => {
+  if (anchor.dataset.sandboxAttached) return;
+
+  const container = getContainerSelector(anchor);
+  const containerElement = (container ? document.querySelector(container) : null) || document;
+
+  if (!ADDR_NAME_REGEX.test(anchor.id)) {
+    attachSandboxLauncher(anchor as HTMLInputElement, container, false, () => (anchor as HTMLInputElement).value);
+    return;
+  }
+
+  const nameInput = anchor as HTMLInputElement;
+  const addr1 = findEnabledAddressInput(containerElement);
+  if (!addr1) return;
+
+  attachSandboxLauncher(nameInput, container, true);
+  attachSandboxLauncher(addr1, container, false, () => nameInput.value);
+};
+
+const findEnabledAddressInput = (containerElement: ParentNode): HTMLInputElement | undefined => {
+  return Array.from(containerElement.querySelectorAll('input')).find((input) => ADDR1_REGEX.test(input.id) && isFieldEnabled(input) && input.isConnected && input.getClientRects().length > 0);
 };
 
 const bindAddressHotkey = (): void => {
@@ -144,89 +122,6 @@ const bindAddressHotkey = (): void => {
   });
 
   addressWindow.__p21AddressHotkeyBound = true;
-};
-
-/**
- * Resolves a P21 element by its precise ID or by searching within its DataWindow container.
- */
-const findP21Element = (dwName: string, fieldName: string): HTMLElement | null => {
-  const preciseId = `${dwName}.${fieldName}`;
-  const element = document.getElementById(preciseId);
-  if (element) return element;
-
-  const dwContainer = document.querySelector(`[id="${dwName}"]`);
-  return (dwContainer?.querySelector(`input[id$=".${fieldName}"]`) as HTMLElement) || null;
-};
-
-const findAnchorInput = (contextOverride?: ReturnType<typeof getActiveContext>): HTMLElement | null => {
-  const { tabName, dataWindow } = contextOverride || getActiveContext();
-  const schemaCount = getDataWindowSchemaCount();
-
-  if (isDebugEnabled() && (tabName || schemaCount === 0)) {
-    console.debug(LOG_PREFIX, 'findAnchorInput: Attempting to find anchor input...');
-  }
-
-  if (tabName && dataWindow) {
-    if (isDebugEnabled()) console.debug(LOG_PREFIX, `findAnchorInput: XHR context active: tabName=${tabName}, dataWindow=${dataWindow}`);
-    const fullDwName = `${tabName}.${dataWindow}`;
-    const schema = getDataWindowSchema(fullDwName);
-
-    if (schema) {
-      const schemaFields = Array.from(schema);
-      if (isDebugEnabled()) console.debug(LOG_PREFIX, `findAnchorInput: Schema found for ${fullDwName}. Fields:`, schemaFields);
-
-      // Requirement: Only attach if a valid Address1 field exists in the schema AND is visible in the DOM.
-      // This prevents false positives in contexts like Contacts where address fields might be defined but not rendered.
-      const hasVisibleAddress1 = schemaFields
-        .filter((field) => ADDR1_REGEX.test(field))
-        .some((field) => {
-          const element = findP21Element(dataWindow, field);
-          return element instanceof HTMLElement && isFieldEnabled(element) && element.isConnected && element.getClientRects().length > 0;
-        });
-
-      let anchorFieldName: string | undefined;
-
-      if (hasVisibleAddress1) {
-        anchorFieldName = schemaFields.find((field) => ADDR_NAME_REGEX.test(field)) || schemaFields.find((field) => ADDR1_REGEX.test(field));
-      }
-
-      if (anchorFieldName) {
-        if (isDebugEnabled()) console.debug(LOG_PREFIX, `findAnchorInput: Anchor field name identified from schema: ${anchorFieldName}`);
-
-        const element = findP21Element(dataWindow, anchorFieldName);
-
-        if (element instanceof HTMLInputElement && isFieldEnabled(element) && element.isConnected && element.getClientRects().length > 0) {
-          if (isDebugEnabled()) console.debug(LOG_PREFIX, 'findAnchorInput: XHR-prioritized anchor input found and enabled:', element, '(Source: XHR)');
-          return element;
-        }
-      } else if (isDebugEnabled()) {
-        console.debug(LOG_PREFIX, `findAnchorInput: No anchor field name found in schema for ${fullDwName} using address regexes.`);
-      }
-
-      // Optimization: If a schema is found for the active XHR context, it is the authoritative
-      // map for the current view. If address fields aren't in the schema, we stop here
-      // to prevent the DOM scan from picking up fields from inactive or background tabs.
-      return null;
-    } else if (isDebugEnabled()) {
-      console.debug(LOG_PREFIX, `findAnchorInput: No schema found for ${fullDwName}.`);
-    }
-  } else if (isDebugEnabled()) {
-    console.debug(LOG_PREFIX, 'findAnchorInput: No active XHR context. Falling back to DOM scan.');
-  }
-
-  // Optimization: Filter by ID patterns first, then check if enabled to reduce state store queries
-  const allInputs = Array.from(document.querySelectorAll('input'));
-  const addr1Input = allInputs.find((input) => ADDR1_REGEX.test(input.id) && isFieldEnabled(input) && input.isConnected && input.getClientRects().length > 0);
-
-  if (addr1Input) {
-    const nameInput = allInputs.find((input) => ADDR_NAME_REGEX.test(input.id) && isFieldEnabled(input) && input.isConnected && input.getClientRects().length > 0);
-    const anchor = (nameInput || addr1Input) as HTMLElement;
-    if (isDebugEnabled()) console.debug(LOG_PREFIX, `findAnchorInput: DOM-based anchor input found (${nameInput ? 'Name' : 'Address1'} field):`, anchor, '(Source: DOM)');
-    return anchor;
-  }
-
-  if (isDebugEnabled()) console.debug(LOG_PREFIX, 'findAnchorInput: No usable anchor input found via XHR or DOM scan.');
-  return null;
 };
 
 export const installAddressAutocomplete = (): void => {

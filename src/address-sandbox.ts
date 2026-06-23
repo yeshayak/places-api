@@ -15,7 +15,7 @@ window.addEventListener('message', async (event) => {
     isInitialized = true;
 
     await initAutocomplete(event.data.apiKey, event.data.initialValue);
-    console.log('[P21 SANDBOX] Google Places Autocomplete initialized.', event);
+    console.log('[P21 SANDBOX] Google Places Autocomplete initialized.');
   }
 });
 
@@ -34,7 +34,8 @@ async function initAutocomplete(apiKey: string, initialValue?: string): Promise<
 
   // Create the modern input element using the class constructor
   const autocompleteElement = new PlaceAutocompleteElement();
-  autocompleteElement.restrictions = { country: 'us' };
+  autocompleteElement.includedRegionCodes = ['us'];
+  autocompleteElement.tabIndex = 0;
 
   if (oldInput) {
     oldInput.replaceWith(autocompleteElement);
@@ -42,25 +43,26 @@ async function initAutocomplete(apiKey: string, initialValue?: string): Promise<
     container?.appendChild(autocompleteElement);
   }
 
-  // Focus the internal search input and optionally inject an initial value
-  let attempts = 0;
-  const setupInput = () => {
-    const internalInput = (autocompleteElement as any).shadowRoot?.querySelector('input');
+  if (initialValue) {
+    autocompleteElement.value = initialValue;
+    autocompleteElement.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  }
+
+  const focusAutocomplete = () => {
+    window.focus();
+    autocompleteElement.focus();
+
+    const internalInput = autocompleteElement.shadowRoot?.querySelector('input') as HTMLInputElement | null | undefined;
     if (internalInput) {
-      if (initialValue) {
-        internalInput.value = initialValue;
-        // Trigger input event so the Google component acknowledges the value change
-        internalInput.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      // Programmatically focus the input for better UX in the sandboxed modal
       internalInput.focus();
-    } else if (attempts < 20) {
-      attempts++;
-      setTimeout(setupInput, 50);
+    } else {
+      console.debug(LOG_PREFIX, 'Places UI: Internal input is not available through an open shadow root.');
     }
   };
 
-  setupInput();
+  requestAnimationFrame(focusAutocomplete);
+  setTimeout(focusAutocomplete, 100);
+  setTimeout(focusAutocomplete, 300);
 
   console.debug(LOG_PREFIX, 'Places UI: Autocomplete element attached to DOM.');
 

@@ -208,11 +208,11 @@ export const openSandbox = async (containerSelector: string, includeName: boolea
   const iframeContainer = overlay.querySelector('.p21-iframe-container');
   const iframe = document.createElement('iframe');
   iframe.className = 'p21-sandbox-iframe';
+  iframe.tabIndex = -1;
   iframe.onload = () => {
     getApiKey()
       .then((apiKey) => {
-        // We remove iframe.focus() to avoid "Blocked autofocusing" warnings in cross-origin frames.
-        // The user will interact with the search box directly.
+        iframe.focus();
         iframe.contentWindow?.postMessage({ type: 'INIT_SANDBOX', apiKey, initialValue }, '*');
       })
       .catch((error) => {

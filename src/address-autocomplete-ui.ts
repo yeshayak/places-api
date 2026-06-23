@@ -88,17 +88,20 @@ const attachLaunchersForAnchor = (anchor: HTMLElement): void => {
   const container = getContainerSelector(anchor);
   const containerElement = (container ? document.querySelector(container) : null) || document;
 
+  // Case 1: The anchor is an address field, but not a 'name' field.
   if (!ADDR_NAME_REGEX.test(anchor.id)) {
-    attachSandboxLauncher(anchor as HTMLInputElement, container, false, () => (anchor as HTMLInputElement).value);
+    // Attach launcher, which will default to using the anchor's own value.
+    attachSandboxLauncher(anchor as HTMLInputElement, container, false);
     return;
   }
 
+  // Case 2: The anchor is a 'name' field. Attach launchers to both 'name' and 'address1'.
   const nameInput = anchor as HTMLInputElement;
   const addr1 = findEnabledAddressInput(containerElement);
   if (!addr1) return;
 
   attachSandboxLauncher(nameInput, container, true);
-  attachSandboxLauncher(addr1, container, false, () => nameInput.value);
+  attachSandboxLauncher(addr1, container, false);
 };
 
 const findEnabledAddressInput = (containerElement: ParentNode): HTMLInputElement | undefined => {

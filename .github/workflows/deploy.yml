@@ -36,8 +36,6 @@ jobs:
   deploy:
     name: Build and publish
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
@@ -89,6 +87,59 @@ jobs:
           else
             echo "type=patch" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Request Chrome Web Store access token
+        id: auth
+        shell: bash
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          CWS_EXTENSION_ID_PROD: ${{ secrets.CWS_EXTENSION_ID_PROD }}
+          CWS_EXTENSION_ID_DEV: ${{ secrets.CWS_EXTENSION_ID_DEV }}
+        run: |
+          required_secrets=(
+            CWS_CLIENT_ID
+            CWS_CLIENT_SECRET
+            CWS_REFRESH_TOKEN
+            CWS_PUBLISHER_ID
+          )
+
+          if [[ "${{ steps.target.outputs.target }}" == "production" ]]; then
+            required_secrets+=(CWS_EXTENSION_ID_PROD)
+          else
+            required_secrets+=(CWS_EXTENSION_ID_DEV)
+          fi
+
+          missing_secrets=()
+          for secret_name in "${required_secrets[@]}"; do
+            if [[ -z "${!secret_name}" ]]; then
+              missing_secrets+=("$secret_name")
+            fi
+          done
+
+          if (( ${#missing_secrets[@]} > 0 )); then
+            echo "Missing required GitHub secrets: ${missing_secrets[*]}" >&2
+            exit 1
+          fi
+
+          if ! TOKEN_RESPONSE="$(curl --fail-with-body -sS -X POST "https://oauth2.googleapis.com/token" \
+            --data-urlencode "client_id=$CWS_CLIENT_ID" \
+            --data-urlencode "client_secret=$CWS_CLIENT_SECRET" \
+            --data-urlencode "refresh_token=$CWS_REFRESH_TOKEN" \
+            --data-urlencode "grant_type=refresh_token" 2>&1)"; then
+            echo "$TOKEN_RESPONSE" >&2
+            exit 1
+          fi
+
+          ACCESS_TOKEN="$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')"
+          if [[ -z "$ACCESS_TOKEN" ]]; then
+            echo "$TOKEN_RESPONSE" >&2
+            exit 1
+          fi
+
+          echo "access_token=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -228,24 +279,6 @@ jobs:
           git tag "$TAG"
           git push origin "$TAG"
           echo "name=$TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Request Chrome Web Store access token
-        id: auth
-        shell: bash
-        run: |
-          TOKEN_RESPONSE="$(curl --fail-with-body -sS -X POST "https://oauth2.googleapis.com/token" \
-            -d "client_id=${{ secrets.CWS_CLIENT_ID }}" \
-            -d "client_secret=${{ secrets.CWS_CLIENT_SECRET }}" \
-            -d "refresh_token=${{ secrets.CWS_REFRESH_TOKEN }}" \
-            -d "grant_type=refresh_token")"
-
-          ACCESS_TOKEN="$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')"
-          if [[ -z "$ACCESS_TOKEN" ]]; then
-            echo "$TOKEN_RESPONSE" >&2
-            exit 1
-          fi
-
-          echo "access_token=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Upload to Chrome Web Store
         shell: bash

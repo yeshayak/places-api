@@ -50,12 +50,31 @@ const handleUpdate = (target: EventTarget | null) => {
           DataElements: [
             {
               Name: 'TABPAGE_1.tp_1_dw_1',
+              BusinessObjectName: null,
               Type: 'Form',
               Keys: ['item_id'],
-              Rows: [{ Edits: [{ Name: 'item_id', Value: itemId, IgnoreIfEmpty: true }] }],
+              Rows: [
+                {
+                  Edits: [{ Name: 'item_id', Value: itemId, IgnoreIfEmpty: true }],
+                  RelativeDateEdits: [],
+                },
+              ],
+            },
+            {
+              Name: 'TABPAGE_6.tp_6_dw_6',
+              BusinessObjectName: null,
+              Type: 'List',
+              Keys: ['supplier_id'],
+              Rows: [
+                {
+                  Edits: [{ Name: 'supplier_id', Value: supplierId, IgnoreIfEmpty: true }],
+                  RelativeDateEdits: [],
+                },
+              ],
             },
             {
               Name: 'TABPAGE_7.tp_7_dw_7',
+              BusinessObjectName: null,
               Type: 'Form',
               Keys: ['supplier_id'],
               Rows: [
@@ -64,10 +83,12 @@ const handleUpdate = (target: EventTarget | null) => {
                     { Name: 'supplier_id', Value: supplierId, IgnoreIfEmpty: true },
                     { Name: 'cost', Value: cost, IgnoreIfEmpty: true },
                   ],
+                  RelativeDateEdits: [],
                 },
               ],
             },
           ],
+          Documents: null,
         },
       ],
       Query: null,
